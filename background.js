@@ -140,10 +140,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.type === 'PLAYER_SEEN') {
     handlePlayerSeen(message);
   } else if (message.type === 'CREATE_TAB') {
     chrome.tabs.create({ url: message.url, active: message.active !== false });
+  } else if (message.type === 'CLOSE_TAB') {
+    if (sender.tab?.id) chrome.tabs.remove(sender.tab.id);
   }
 });

@@ -211,7 +211,7 @@ async function main() {
           }).catch(() => {});
         }
         showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
-        setTimeout(() => window.close(), 1500);
+        setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 1500);
       } else if (attempts++ < 20) setTimeout(tryExtract, 300);
     };
     tryExtract();
@@ -260,11 +260,11 @@ async function main() {
 
     await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('✔ Tropas guardadas!', 'ok');
-    setTimeout(() => window.close(), 1000);
+    setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 1000);
 
   } catch (err) {
     showOverlay('❌ ' + err.message, 'error');
-    setTimeout(() => window.close(), 4000);
+    setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 4000);
   }
 }
 
