@@ -287,7 +287,9 @@ window.addEventListener('message', (event) => {
   if (event.data.type === 'EOS_FORCE_REPORT') {
     getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
       if (!eosToken || !eosWorld) return;
-      chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: '0', pendingTroopGroupName: 'Todos' });
+      const groupId   = event.data.groupId   || '0';
+      const groupName = event.data.groupName || 'Todos';
+      chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
       const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units&type=own_home`;
       chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
     });
