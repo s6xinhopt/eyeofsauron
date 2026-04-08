@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Eye of Sauron",
+  "version": "2.0",
+  "description": "Tribe Management para Tribal Wars PT.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "activeTab",
+    "alarms",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.tribalwars.com.pt/*",
+    "https://eos-server-sooty.vercel.app/*"
+  ],
+  "icons": {
+    "128": "background/frame_eye.png"
+  },
+  "action": {
+    "default_icon": {
+      "128": "background/frame_eye.png"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["background/eye_of_sauron.gif", "background/frame_eye.png"],
+      "matches": ["*://*.tribalwars.com.pt/*"]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*.tribalwars.com.pt/*"],
+      "js": ["page_reader.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.tribalwars.com.pt/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
