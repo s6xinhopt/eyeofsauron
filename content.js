@@ -242,11 +242,11 @@ window.addEventListener('message', (event) => {
   if (event.source !== window || !event.data) return;
 
   if (event.data.type === 'EOS_GAME_DATA') {
-    const { playerName, tribeName, hasTribe } = event.data;
+    const { playerName, tribeName, allyId, hasTribe } = event.data;
     if (!playerName) return;
     // Envia para background que chama o servidor
     chrome.runtime.sendMessage({
-      type: 'PLAYER_SEEN', playerName, tribeName, hasTribe,
+      type: 'PLAYER_SEEN', playerName, tribeName, allyId, hasTribe,
       world: window.location.hostname.split('.')[0]
     });
   }
