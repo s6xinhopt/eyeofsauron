@@ -260,11 +260,11 @@ async function main() {
 
     await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('✔ Tropas guardadas!', 'ok');
-    setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 1000);
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
 
   } catch (err) {
     showOverlay('❌ ' + err.message, 'error');
-    setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 4000);
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 4000);
   }
 }
 
