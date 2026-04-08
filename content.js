@@ -277,6 +277,13 @@ window.addEventListener('message', (event) => {
   if (!event.data) return;
 
   // Mensagens do iframe do painel EOS
+  if (event.data.type === 'EOS_SYNC_SCHEDULES') {
+    getStorage('eosToken').then(({ eosToken }) => {
+      if (eosToken) chrome.runtime.sendMessage({ type: 'SYNC_SCHEDULES', token: eosToken });
+    });
+    return;
+  }
+
   if (event.data.type === 'EOS_EXTRACT_GROUPS_REQUEST') {
     const world = window.location.hostname.split('.')[0];
     const url = `https://${world}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;

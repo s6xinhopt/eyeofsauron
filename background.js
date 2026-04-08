@@ -147,5 +147,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     chrome.tabs.create({ url: message.url, active: message.active !== false });
   } else if (message.type === 'CLOSE_TAB') {
     if (sender.tab?.id) chrome.tabs.remove(sender.tab.id);
+  } else if (message.type === 'SYNC_SCHEDULES') {
+    if (message.token) syncSchedules(message.token);
   }
 });
