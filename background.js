@@ -38,15 +38,35 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
 
 // ── Agendamentos ─────────────────────────────────────────────────────────────
 
-async function syncSchedules(token) {
+async function syncSchedules(token, checkMissed = false) {
   try {
     const res = await fetch(`${EOS_SERVER}/api/schedules`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) return;
-    const { schedules } = await res.json();
+    const { schedules, last_report } = await res.json();
     await chrome.storage.local.set({ autoUpdateSchedules: schedules });
     setupAlarms(schedules);
+
+    // Verifica se algum agendamento foi falhado enquanto o PC estava desligado
+    if (checkMissed && schedules && schedules.length > 0) {
+      const lastReportTime = last_report ? new Date(last_report).getTime() : 0;
+      const now = Date.now();
+      // Usa o menor intervalo dos agendamentos como referência
+      const minInterval = Math.min(...schedules.map(s => s.intervalMin || Infinity));
+      if (minInterval < Infinity) {
+        const elapsed = (now - lastReportTime) / 60000; // em minutos
+        if (elapsed >= minInterval) {
+          console.log(`[EOS] Atualização falhada detetada (${Math.round(elapsed)}min atrás). A disparar agora...`);
+          // Dispara para cada agendamento que tenha falhado
+          for (const s of schedules) {
+            if (elapsed >= (s.intervalMin || Infinity)) {
+              await triggerReport(s.twGroupId, s.twGroupName);
+            }
+          }
+        }
+      }
+    }
   } catch (_) {}
 }
 
@@ -94,11 +114,11 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onStartup.addListener(async () => {
   const { eosToken, autoUpdateSchedules } = await chrome.storage.local.get(['eosToken', 'autoUpdateSchedules']);
-  if (eosToken) syncSchedules(eosToken);
-  else if (autoUpdateSchedules) setupAlarms(autoUpdateSchedules);
-  // Dispara imediatamente para todos os agendamentos
-  for (const s of (autoUpdateSchedules || [])) {
-    await triggerReport(s.twGroupId, s.twGroupName);
+  if (eosToken) {
+    // checkMissed=true: verifica se houve atualizações falhadas enquanto o PC estava desligado
+    syncSchedules(eosToken, true);
+  } else if (autoUpdateSchedules) {
+    setupAlarms(autoUpdateSchedules);
   }
 });
 

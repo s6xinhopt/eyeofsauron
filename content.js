@@ -148,7 +148,33 @@ function injectEOSButton() {
   btn.addEventListener('click', async () => {
     const { eosToken } = await getStorage('eosToken');
     if (!eosToken) { alert('Ainda não autenticado. Aguarda uns segundos e tenta novamente.'); return; }
-    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `${EOS_SERVER}/panel?token=${eosToken}`, active: true });
+
+    // Se já está aberto, fecha
+    const existing = document.getElementById('eos-panel-overlay');
+    if (existing) { existing.remove(); return; }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'eos-panel-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
+
+    const container = document.createElement('div');
+    container.style.cssText = 'position:relative;width:95vw;max-width:1200px;height:90vh;background:#0d0d1a;border:2px solid #c0a060;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.8)';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;z-index:1;background:none;border:none;color:#c0a060;font-size:20px;cursor:pointer;line-height:1';
+    closeBtn.onclick = () => overlay.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.src = `${EOS_SERVER}/panel?token=${eosToken}`;
+    iframe.style.cssText = 'width:100%;height:100%;border:none';
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    container.appendChild(closeBtn);
+    container.appendChild(iframe);
+    overlay.appendChild(container);
+    document.body.appendChild(overlay);
   });
 
   const badge = document.createElement('span');
@@ -175,6 +201,15 @@ async function main() {
       const groups = extractTWGroups();
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups });
+        // Envia grupos para o servidor para o painel os mostrar
+        const { eosToken } = await getStorage('eosToken');
+        if (eosToken) {
+          fetch(`${EOS_SERVER}/api/tw-groups`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
+            body: JSON.stringify({ groups })
+          }).catch(() => {});
+        }
         showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
         setTimeout(() => window.close(), 1500);
       } else if (attempts++ < 20) setTimeout(tryExtract, 300);
@@ -239,7 +274,27 @@ waitForQuestlog();
 // ── Recebe dados do page_reader (MAIN world) ─────────────────────────────────
 
 window.addEventListener('message', (event) => {
-  if (event.source !== window || !event.data) return;
+  if (!event.data) return;
+
+  // Mensagens do iframe do painel EOS
+  if (event.data.type === 'EOS_EXTRACT_GROUPS_REQUEST') {
+    const world = window.location.hostname.split('.')[0];
+    const url = `https://${world}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;
+    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
+    return;
+  }
+
+  if (event.data.type === 'EOS_FORCE_REPORT') {
+    getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
+      if (!eosToken || !eosWorld) return;
+      chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: '0', pendingTroopGroupName: 'Todos' });
+      const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units&type=own_home`;
+      chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
+    });
+    return;
+  }
+
+  if (event.source !== window) return;
 
   if (event.data.type === 'EOS_GAME_DATA') {
     const { playerName, tribeName, allyId, hasTribe } = event.data;
@@ -256,4 +311,5 @@ window.addEventListener('message', (event) => {
     showOverlay(`✔ ${event.data.groups.length} grupos extraídos!`, 'ok');
     setTimeout(() => window.close(), 1500);
   }
+
 });
