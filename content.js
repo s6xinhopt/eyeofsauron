@@ -23,6 +23,16 @@ async function getStorage(...keys) {
 
 const TROOP_NAMES = ['spear','sword','axe','archer','spy','light','marcher','heavy','ram','catapult','knight','snob'];
 
+// Custo de população por unidade (valores padrão TW)
+const POP_COST = {
+  spear:1, sword:1, axe:1, archer:1,
+  spy:2, light:4, marcher:5, heavy:6,
+  ram:5, catapult:8, knight:10, snob:100
+};
+// Unidades ofensivas e defensivas para cálculo de pop
+const OFFENSE_UNITS = ['axe','light','ram','catapult','marcher'];
+const DEFENSE_UNITS = ['spear','sword','heavy','catapult','archer'];
+
 function readTroops() {
   // Mesmo método do Support Sender: lê #village_troup_list com data-unit
   const table = document.querySelector('#village_troup_list');
@@ -49,6 +59,42 @@ function readTroops() {
   }
 
   return Object.keys(totals).length ? totals : null;
+}
+
+// Classifica cada aldeia em categorias (mesma lógica do Troops Counter)
+// Usa custo de população para determinar força ofensiva/defensiva
+function classifyVillages() {
+  const table = document.querySelector('#village_troup_list');
+  if (!table) return null;
+
+  const rows = Array.from(table.querySelectorAll('tbody tr'));
+  if (!rows.length) return null;
+
+  const result = { full_nuke: 0, semi_nuke: 0, full_def: 0, semi_def: 0, noble: 0, other: 0 };
+
+  rows.forEach(row => {
+    const counts = {};
+    for (const unit of TROOP_NAMES) {
+      const cell = row.querySelector(`[data-unit='${unit}']`);
+      counts[unit] = cell ? (parseInt((cell.textContent || '').replace(/\D/g, '')) || 0) : 0;
+    }
+
+    // Aldeias com nobre → categoria "noble"
+    if ((counts['snob'] || 0) >= 1) { result.noble++; return; }
+
+    // Pop ofensiva e defensiva
+    let offPop = 0, defPop = 0;
+    for (const u of OFFENSE_UNITS) offPop += (counts[u] || 0) * (POP_COST[u] || 0);
+    for (const u of DEFENSE_UNITS) defPop += (counts[u] || 0) * (POP_COST[u] || 0);
+
+    if      (offPop >= 20000) result.full_nuke++;
+    else if (offPop >= 15000) result.semi_nuke++;
+    else if (defPop >= 20000) result.full_def++;
+    else if (defPop >= 15000) result.semi_def++;
+    else                      result.other++;
+  });
+
+  return result;
 }
 
 function waitForTable() {
@@ -291,11 +337,12 @@ async function main() {
     await waitForTable();
     const troops = readTroops();
     if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
+    const classification = classifyVillages();
 
     const res = await fetch(`${EOS_SERVER}/api/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ troops, groupId, groupName })
+      body: JSON.stringify({ troops, classification, groupId, groupName })
     });
 
     if (!res.ok) throw new Error(`Servidor: ${res.status}`);
@@ -421,10 +468,11 @@ async function runTroopReport() {
     await waitForTable();
     const troops = readTroops();
     if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
+    const classification = classifyVillages();
     const res = await fetch(`${EOS_SERVER}/api/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ troops, groupId, groupName })
+      body: JSON.stringify({ troops, classification, groupId, groupName })
     });
     if (!res.ok) throw new Error(`Servidor: ${res.status}`);
     await chrome.storage.local.set({ pendingTroopRequest: false });
