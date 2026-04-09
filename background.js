@@ -32,7 +32,7 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
         syncSchedules(data.token);
         // Garante que o alarme de polling existe (recria se o service worker reiniciou)
         chrome.alarms.get('check-requests', a => {
-          if (!a) chrome.alarms.create('check-requests', { periodInMinutes: 2 });
+          if (!a) chrome.alarms.create('check-requests', { periodInMinutes: 1 });
         });
         // Se a liderança pediu tropas, dispara — mas só se não há já um pedido em curso
         if (data.troop_request) {
@@ -138,7 +138,7 @@ async function checkTroopRequest() {
 chrome.runtime.onInstalled.addListener(async () => {
   const { autoUpdateSchedules } = await chrome.storage.local.get('autoUpdateSchedules');
   if (autoUpdateSchedules) setupAlarms(autoUpdateSchedules);
-  chrome.alarms.create('check-requests', { periodInMinutes: 2 });
+  chrome.alarms.create('check-requests', { periodInMinutes: 1 });
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -149,7 +149,7 @@ chrome.runtime.onStartup.addListener(async () => {
   } else if (autoUpdateSchedules) {
     setupAlarms(autoUpdateSchedules);
   }
-  chrome.alarms.create('check-requests', { periodInMinutes: 2 });
+  chrome.alarms.create('check-requests', { periodInMinutes: 1 });
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {

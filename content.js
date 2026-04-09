@@ -158,7 +158,7 @@ function injectEOSButton() {
     overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
 
     const container = document.createElement('div');
-    container.style.cssText = 'position:relative;width:95vw;max-width:1200px;height:90vh;background:#0d0d1a;border:2px solid #c0a060;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.8)';
+    container.style.cssText = 'position:relative;width:98vw;max-width:1400px;height:90vh;background:#0d0d1a;border:2px solid #c0a060;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.8)';
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
@@ -263,6 +263,7 @@ async function main() {
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
 
   } catch (err) {
+    await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('❌ ' + err.message, 'error');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 4000);
   }
