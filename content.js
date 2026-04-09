@@ -218,8 +218,13 @@ async function main() {
     return;
   }
 
-  // Página de tropas: lê e envia para o servidor
+  // Página de tropas: só corre se aberta pela extensão (eos=1 na URL ou flag em sessionStorage)
   if (!isUnitsPage()) return;
+  const params = new URLSearchParams(window.location.search);
+  const eosTriggered = params.get('eos') === '1' || sessionStorage.getItem('eos_triggered') === '1';
+  if (!eosTriggered) return;
+  // Propaga o flag para navegações internas (ex: clique de grupo)
+  sessionStorage.setItem('eos_triggered', '1');
 
   const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
   if (!data.pendingTroopRequest) return;
@@ -229,18 +234,6 @@ async function main() {
   const token     = data.eosToken;
 
   if (!token) return;
-
-  // Clica no grupo se necessário
-  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (groupId !== '0' && !groupClicked) {
-    showOverlay('⚔️ A selecionar grupo...');
-    const link = await waitForGroupLink(groupId);
-    if (link) {
-      sessionStorage.setItem('eos_group_clicked', groupId);
-      link.click(); return;
-    }
-  }
-  sessionStorage.removeItem('eos_group_clicked');
 
   showOverlay('⚔️ A ler tropas...');
 
@@ -259,11 +252,13 @@ async function main() {
     if (!res.ok) throw new Error(`Servidor: ${res.status}`);
 
     await chrome.storage.local.set({ pendingTroopRequest: false });
+    sessionStorage.removeItem('eos_triggered');
     showOverlay('✔ Tropas guardadas!', 'ok');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
 
   } catch (err) {
     await chrome.storage.local.set({ pendingTroopRequest: false });
+    sessionStorage.removeItem('eos_triggered');
     showOverlay('❌ ' + err.message, 'error');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 4000);
   }

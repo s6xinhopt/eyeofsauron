@@ -9,8 +9,10 @@
     console.log('[EOS] game_data.ally:', JSON.stringify(gd.ally));
 
     if (playerName) {
-      // Tenta obter o nome da tribo de várias fontes
-      const tribeName = (gd.ally && gd.ally.name)
+      // Tenta obter o nome COMPLETO da tribo de várias fontes
+      // ally.name é o tag/abreviatura (ex: "NT"); ally.full_name é o nome completo
+      const tribeName = (gd.ally && gd.ally.full_name)
+        || (gd.ally && gd.ally.name)
         || (gd.player && gd.player.ally_name)
         || (gd.player && gd.player.tribe_name)
         // Fallback: lê do DOM (header da página TW)
