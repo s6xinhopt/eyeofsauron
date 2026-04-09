@@ -126,7 +126,20 @@ async function triggerReport(groupId, groupName) {
     pendingTroopGroupId:   groupId || '0',
     pendingTroopGroupName: groupName || 'Todos'
   });
-  chrome.tabs.create({ url: troopsUrl, active: false });
+
+  const tab = await chrome.tabs.create({ url: troopsUrl, active: false });
+
+  // Envia mensagem direta à tab quando terminar de carregar (evita race condition com storage)
+  const listener = (tabId, info) => {
+    if (tabId !== tab.id || info.status !== 'complete') return;
+    chrome.tabs.onUpdated.removeListener(listener);
+    chrome.tabs.sendMessage(tab.id, {
+      type: 'EOS_TRIGGER_REPORT',
+      groupId:   groupId || '0',
+      groupName: groupName || 'Todos'
+    }).catch(() => {});
+  };
+  chrome.tabs.onUpdated.addListener(listener);
 }
 
 // ── Badge de notificação: pedidos pendentes de membros ───────────────────────

@@ -262,11 +262,14 @@ async function main() {
   // Página de tropas: lê e envia para o servidor
   if (!isUnitsPage()) return;
 
-  // Retry até 1s caso o storage ainda não esteja escrito (race condition)
+  // Retry até 2s caso o storage ainda não esteja escrito (race condition)
   let data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
   if (!data.pendingTroopRequest) {
-    await new Promise(r => setTimeout(r, 500));
-    data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
+    for (let i = 0; i < 4; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
+      if (data.pendingTroopRequest) break;
+    }
   }
   if (!data.pendingTroopRequest) return;
 
@@ -383,3 +386,69 @@ window.addEventListener('message', (event) => {
   }
 
 });
+
+// Mensagem direta do background (fallback para race condition com storage)
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type !== 'EOS_TRIGGER_REPORT') return;
+  if (!isUnitsPage()) return;
+  // Força o flag no storage e relança o fluxo principal
+  chrome.storage.local.set({
+    pendingTroopRequest:   true,
+    pendingTroopGroupId:   msg.groupId   || '0',
+    pendingTroopGroupName: msg.groupName || 'Todos'
+  }).then(() => runTroopReport());
+});
+
+async function runTroopReport() {
+  const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
+  if (!data.pendingTroopRequest || !data.eosToken) return;
+
+  const groupId   = data.pendingTroopGroupId   || '0';
+  const groupName = data.pendingTroopGroupName || 'Todos';
+  const token     = data.eosToken;
+
+  // Clica no grupo correto
+  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
+  if (!groupClicked) {
+    const el = await waitForGroupElement(groupId);
+    if (el) {
+      showOverlay('⚔️ A selecionar grupo...');
+      sessionStorage.setItem('eos_group_clicked', groupId);
+      el.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_group_clicked');
+
+  // Paginação
+  const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
+  if (!pagClicked) {
+    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
+      .find(a => /todos/i.test(a.textContent.trim()));
+    if (pagTodos) {
+      showOverlay('⚔️ A carregar todas as páginas...');
+      sessionStorage.setItem('eos_pagination_clicked', '1');
+      pagTodos.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_pagination_clicked');
+
+  showOverlay('⚔️ A ler tropas...');
+  try {
+    await waitForTable();
+    const troops = readTroops();
+    if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
+    const res = await fetch(`${EOS_SERVER}/api/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ troops, groupId, groupName })
+    });
+    if (!res.ok) throw new Error(`Servidor: ${res.status}`);
+    await chrome.storage.local.set({ pendingTroopRequest: false });
+    showOverlay('✔ Tropas guardadas!', 'ok');
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
+  } catch (err) {
+    await chrome.storage.local.set({ pendingTroopRequest: false });
+    showOverlay('❌ ' + err.message, 'error');
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
+  }
+}
