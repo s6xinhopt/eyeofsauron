@@ -118,14 +118,21 @@ function showOverlay(msg, type = 'info') {
 // ── Clique de grupo ──────────────────────────────────────────────────────────
 
 function findGroupElement(groupId) {
-  // Tenta vários seletores usados pelo TW PT
+  // Para "Todos" (id=0): procura link sem group= ou com group=0
+  if (groupId === '0') {
+    return document.querySelector('a[href*="group=0"]')
+        || Array.from(document.querySelectorAll('a')).find(a => {
+             const h = a.getAttribute('href') || '';
+             return h.includes('mode=units') && !h.includes('group=');
+           })
+        || null;
+  }
+  // Para grupos específicos: tenta vários seletores usados pelo TW PT
   return document.querySelector(`a[href*="group=${groupId}"]`)
       || document.querySelector(`a[data-group-id="${groupId}"]`)
       || (() => {
-           const all = document.querySelectorAll('[onclick]');
-           for (const el of all) {
-             const oc = el.getAttribute('onclick') || '';
-             if (oc.includes(groupId)) return el;
+           for (const el of document.querySelectorAll('[onclick]')) {
+             if ((el.getAttribute('onclick') || '').includes(groupId)) return el;
            }
            return null;
          })();
@@ -232,13 +239,8 @@ async function main() {
     return;
   }
 
-  // Página de tropas: só corre se aberta pela extensão (eos=1 na URL ou flag em sessionStorage)
+  // Página de tropas: lê e envia para o servidor
   if (!isUnitsPage()) return;
-  const params = new URLSearchParams(window.location.search);
-  const eosTriggered = params.get('eos') === '1' || sessionStorage.getItem('eos_triggered') === '1';
-  if (!eosTriggered) return;
-  // Propaga o flag para navegações internas (ex: clique de grupo)
-  sessionStorage.setItem('eos_triggered', '1');
 
   const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
   if (!data.pendingTroopRequest) return;
@@ -249,12 +251,12 @@ async function main() {
 
   if (!token) return;
 
-  // Clica no grupo se necessário (sessionStorage persiste após navegação interna)
+  // Clica no grupo correto (incluindo "Todos" se necessário)
   const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (groupId !== '0' && !groupClicked) {
-    showOverlay('⚔️ A selecionar grupo...');
+  if (!groupClicked) {
     const el = await waitForGroupElement(groupId);
     if (el) {
+      showOverlay('⚔️ A selecionar grupo...');
       sessionStorage.setItem('eos_group_clicked', groupId);
       el.click(); return;
     }
@@ -278,13 +280,11 @@ async function main() {
     if (!res.ok) throw new Error(`Servidor: ${res.status}`);
 
     await chrome.storage.local.set({ pendingTroopRequest: false });
-    sessionStorage.removeItem('eos_triggered');
     showOverlay('✔ Tropas guardadas!', 'ok');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
 
   } catch (err) {
     await chrome.storage.local.set({ pendingTroopRequest: false });
-    sessionStorage.removeItem('eos_triggered');
     showOverlay('❌ ' + err.message, 'error');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 4000);
   }
