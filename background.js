@@ -34,8 +34,11 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
         chrome.alarms.get('check-requests', a => {
           if (!a) chrome.alarms.create('check-requests', { periodInMinutes: 2 });
         });
-        // Se a liderança pediu tropas, dispara imediatamente
-        if (data.troop_request) await triggerReport('0', 'Todos');
+        // Se a liderança pediu tropas, dispara — mas só se não há já um pedido em curso
+        if (data.troop_request) {
+          const { pendingTroopRequest } = await chrome.storage.local.get('pendingTroopRequest');
+          if (!pendingTroopRequest) await triggerReport('0', 'Todos');
+        }
       }
     }
   } catch (err) {
@@ -123,7 +126,10 @@ async function checkTroopRequest() {
     });
     if (!res.ok) return;
     const { troop_request } = await res.json();
-    if (troop_request) await triggerReport('0', 'Todos');
+    if (troop_request) {
+      const { pendingTroopRequest } = await chrome.storage.local.get('pendingTroopRequest');
+      if (!pendingTroopRequest) await triggerReport('0', 'Todos');
+    }
   } catch (_) {}
 }
 
