@@ -61,8 +61,10 @@ function readTroops() {
 }
 
 function getUnitsTable() {
-  const t = document.querySelector('#units_table') || document.querySelector('table.vis.overview_table');
-  return (t && t.querySelectorAll('tbody tr').length > 0) ? t : null;
+  const t = document.querySelector('#units_table')
+         || document.querySelector('table.vis.overview_table')
+         || document.querySelector('table.vis');
+  return (t && t.querySelectorAll('tr').length > 1) ? t : null;
 }
 
 function waitForTable() {
@@ -260,7 +262,12 @@ async function main() {
   // Página de tropas: lê e envia para o servidor
   if (!isUnitsPage()) return;
 
-  const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
+  // Retry até 1s caso o storage ainda não esteja escrito (race condition)
+  let data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
+  if (!data.pendingTroopRequest) {
+    await new Promise(r => setTimeout(r, 500));
+    data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
+  }
   if (!data.pendingTroopRequest) return;
 
   const groupId   = data.pendingTroopGroupId   || '0';
