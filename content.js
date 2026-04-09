@@ -349,7 +349,7 @@ window.addEventListener('message', (event) => {
       const groupId   = event.data.groupId   || '0';
       const groupName = event.data.groupName || 'Todos';
       chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
-      const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units&type=own_home`;
+      const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`;
       chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
     });
     return;
