@@ -112,7 +112,7 @@ function showOverlay(msg, type = 'info') {
 
 function findGroupsContainer() {
   // Procura o elemento que contém directamente o texto "Grupos:" (TW PT)
-  for (const el of document.querySelectorAll('div, td, span')) {
+  for (const el of document.querySelectorAll('div, td, span, p')) {
     for (const node of el.childNodes) {
       if (node.nodeType === Node.TEXT_NODE && /grupos:/i.test(node.textContent)) {
         return el;
@@ -126,10 +126,11 @@ function findGroupElement(groupId) {
   const scope = findGroupsContainer() || document;
 
   if (groupId === '0') {
+    // Na página de mass support o grupo "Todos" pode ser um link sem group= ou com group=0
     return scope.querySelector('a[href*="group=0"]')
         || Array.from(scope.querySelectorAll('a')).find(a => {
              const h = a.getAttribute('href') || '';
-             return h.includes('mode=units') && !h.includes('group=');
+             return (h.includes('mode=call') || h.includes('mode=units')) && !h.includes('group=');
            })
         || null;
   }
@@ -267,6 +268,31 @@ async function main() {
 
   if (!token) return;
 
+  // Passo 1: clica no grupo correto
+  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
+  if (!groupClicked) {
+    const el = await waitForGroupElement(groupId);
+    if (el) {
+      showOverlay('⚔️ A selecionar grupo...');
+      sessionStorage.setItem('eos_group_clicked', groupId);
+      el.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_group_clicked');
+
+  // Passo 2: clica em [todos] da paginação para ver todas as aldeias
+  const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
+  if (!pagClicked) {
+    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
+      .find(a => /todos/i.test(a.textContent.trim()));
+    if (pagTodos) {
+      showOverlay('⚔️ A carregar todas as páginas...');
+      sessionStorage.setItem('eos_pagination_clicked', '1');
+      pagTodos.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_pagination_clicked');
+
   showOverlay('⚔️ A ler tropas...');
 
   try {
@@ -274,7 +300,6 @@ async function main() {
     const troops = readTroops();
     if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
 
-    // Envia para o servidor — a chave Supabase nunca sai do servidor
     const res = await fetch(`${EOS_SERVER}/api/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -369,6 +394,31 @@ async function runTroopReport() {
   const groupId   = data.pendingTroopGroupId   || '0';
   const groupName = data.pendingTroopGroupName || 'Todos';
   const token     = data.eosToken;
+
+  // Passo 1: clica no grupo correto
+  const groupClicked2 = sessionStorage.getItem('eos_group_clicked') === groupId;
+  if (!groupClicked2) {
+    const el = await waitForGroupElement(groupId);
+    if (el) {
+      showOverlay('⚔️ A selecionar grupo...');
+      sessionStorage.setItem('eos_group_clicked', groupId);
+      el.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_group_clicked');
+
+  // Passo 2: paginação
+  const pagClicked2 = sessionStorage.getItem('eos_pagination_clicked') === '1';
+  if (!pagClicked2) {
+    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
+      .find(a => /todos/i.test(a.textContent.trim()));
+    if (pagTodos) {
+      showOverlay('⚔️ A carregar todas as páginas...');
+      sessionStorage.setItem('eos_pagination_clicked', '1');
+      pagTodos.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_pagination_clicked');
 
   showOverlay('⚔️ A ler tropas...');
   try {
