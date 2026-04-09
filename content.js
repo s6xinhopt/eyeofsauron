@@ -22,7 +22,7 @@ async function getStorage(...keys) {
 // ── Leitura de tropas ────────────────────────────────────────────────────────
 
 function readTroops() {
-  const table = document.querySelector('#units_table') || document.querySelector('table.vis');
+  const table = getUnitsTable();
   if (!table) return null;
 
   const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
@@ -60,16 +60,19 @@ function readTroops() {
   return totals;
 }
 
+function getUnitsTable() {
+  const t = document.querySelector('#units_table') || document.querySelector('table.vis.overview_table');
+  return (t && t.querySelectorAll('tbody tr').length > 0) ? t : null;
+}
+
 function waitForTable() {
   return new Promise((resolve, reject) => {
-    let elapsed = 0;
-    const check = () => {
-      const t = document.querySelector('#units_table') || document.querySelector('table.vis');
-      if (t && t.querySelectorAll('tr').length > 2) return resolve();
-      if (elapsed >= 10000) return reject(new Error('Timeout'));
-      elapsed += 300; setTimeout(check, 300);
-    };
-    check();
+    if (getUnitsTable()) return resolve();
+    const observer = new MutationObserver(() => {
+      if (getUnitsTable()) { observer.disconnect(); resolve(); }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout')); }, 10000);
   });
 }
 
@@ -158,7 +161,7 @@ function waitForGroupElement(groupId) {
       const el = findGroupElement(groupId);
       if (el) return resolve(el);
       if (elapsed >= 8000) return resolve(null);
-      elapsed += 200; setTimeout(check, 200);
+      elapsed += 100; setTimeout(check, 100);
     };
     check();
   });
