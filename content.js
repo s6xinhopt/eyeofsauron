@@ -47,8 +47,34 @@ function readTroops() {
 
   if (!Object.keys(colMap).length) return null;
 
+  // Procura a linha "As suas próprias" do resumo agregado (primeira secção da tabela)
+  // É a primeira linha de dados que NÃO tem nome de aldeia (primeira td sem link)
+  const rows = Array.from(table.querySelectorAll('tbody tr'));
+
+  // Estratégia: encontra a linha cujo primeiro td é "as suas próprias" ou similar
+  // A tabela tem secções por aldeia; a primeira linha de cada secção é o nome da aldeia
+  // e a segunda é "as suas próprias" — queremos somar apenas as linhas "as suas próprias"
+  // de todas as aldeias (tropas em casa)
+  const ownRows = rows.filter(row => {
+    const firstTd = row.querySelector('td');
+    if (!firstTd) return false;
+    const txt = firstTd.textContent.trim().toLowerCase();
+    return txt.includes('suas') || txt.includes('próprias') || txt.includes('proprias') || txt.includes('own');
+  });
+
+  // Fallback: se não encontrar, usa todas as linhas "total" de cada aldeia
+  const targetRows = ownRows.length > 0 ? ownRows : rows.filter(row => {
+    const firstTd = row.querySelector('td');
+    if (!firstTd) return false;
+    const txt = firstTd.textContent.trim().toLowerCase();
+    return txt === 'total';
+  });
+
+  // Último fallback: soma todas as linhas (comportamento antigo)
+  const readRows = targetRows.length > 0 ? targetRows : rows;
+
   const totals = {};
-  Array.from(table.querySelectorAll('tbody tr')).forEach(row => {
+  readRows.forEach(row => {
     Array.from(row.querySelectorAll('td')).forEach((cell, idx) => {
       if (colMap[idx]) {
         const v = parseInt((cell.textContent||'').replace(/\D/g,'')) || 0;
