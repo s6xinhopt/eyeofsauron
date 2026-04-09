@@ -29,6 +29,7 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
       console.log(`[EOS] Autenticado: ${playerName} (${data.role})`);
 
       if (data.status === 'approved') {
+        checkPendingBadge();
         // checkMissed=true: se o browser esteve fechado durante uma atualização agendada, dispara agora
         syncSchedules(data.token, true);
         // Garante que o alarme de polling existe (recria se o service worker reiniciou)
@@ -128,6 +129,30 @@ async function triggerReport(groupId, groupName) {
   chrome.tabs.create({ url: troopsUrl, active: false });
 }
 
+// ── Badge de notificação: pedidos pendentes de membros ───────────────────────
+
+async function checkPendingBadge() {
+  const { eosToken, eosRole } = await chrome.storage.local.get(['eosToken', 'eosRole']);
+  if (!eosToken || (eosRole !== 'leader' && eosRole !== 'moderator')) {
+    chrome.action.setBadgeText({ text: '' });
+    return;
+  }
+  try {
+    const res = await fetch(`${EOS_SERVER}/api/pending`, {
+      headers: { Authorization: `Bearer ${eosToken}` }
+    });
+    if (!res.ok) return;
+    const { pending } = await res.json();
+    const count = (pending || []).length;
+    if (count > 0) {
+      chrome.action.setBadgeText({ text: String(count) });
+      chrome.action.setBadgeBackgroundColor({ color: '#c0a060' });
+    } else {
+      chrome.action.setBadgeText({ text: '' });
+    }
+  } catch (_) {}
+}
+
 // ── Verifica pedidos de tropas da liderança ───────────────────────────────────
 
 async function checkTroopRequest() {
@@ -171,7 +196,7 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'check-requests') { await checkTroopRequest(); return; }
+  if (alarm.name === 'check-requests') { await checkTroopRequest(); await checkPendingBadge(); return; }
   if (!alarm.name.startsWith('auto-report-')) return;
 
   // Formato: auto-report-{groupId}-{HH:MM}
