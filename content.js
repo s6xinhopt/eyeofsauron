@@ -117,12 +117,26 @@ function showOverlay(msg, type = 'info') {
 
 // ── Clique de grupo ──────────────────────────────────────────────────────────
 
-function waitForGroupLink(groupId) {
+function findGroupElement(groupId) {
+  // Tenta vários seletores usados pelo TW PT
+  return document.querySelector(`a[href*="group=${groupId}"]`)
+      || document.querySelector(`a[data-group-id="${groupId}"]`)
+      || (() => {
+           const all = document.querySelectorAll('[onclick]');
+           for (const el of all) {
+             const oc = el.getAttribute('onclick') || '';
+             if (oc.includes(groupId)) return el;
+           }
+           return null;
+         })();
+}
+
+function waitForGroupElement(groupId) {
   return new Promise(resolve => {
     let elapsed = 0;
     const check = () => {
-      const link = document.querySelector(`a[data-group-id="${groupId}"]`);
-      if (link) return resolve(link);
+      const el = findGroupElement(groupId);
+      if (el) return resolve(el);
       if (elapsed >= 8000) return resolve(null);
       elapsed += 200; setTimeout(check, 200);
     };
@@ -234,6 +248,18 @@ async function main() {
   const token     = data.eosToken;
 
   if (!token) return;
+
+  // Clica no grupo se necessário (sessionStorage persiste após navegação interna)
+  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
+  if (groupId !== '0' && !groupClicked) {
+    showOverlay('⚔️ A selecionar grupo...');
+    const el = await waitForGroupElement(groupId);
+    if (el) {
+      sessionStorage.setItem('eos_group_clicked', groupId);
+      el.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_group_clicked');
 
   showOverlay('⚔️ A ler tropas...');
 

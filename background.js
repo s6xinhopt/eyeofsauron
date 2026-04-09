@@ -119,8 +119,7 @@ async function triggerReport(groupId, groupName) {
   const { eosPlayerName, eosWorld } = await chrome.storage.local.get(['eosPlayerName', 'eosWorld']);
   if (!eosPlayerName || !eosWorld) return;
 
-  const gParam = (groupId && groupId !== '0') ? `&group=${groupId}` : '&group=0';
-  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units&type=own_home${gParam}&eos=1`;
+  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units&type=own_home&eos=1`;
   await chrome.storage.local.set({
     pendingTroopRequest:   true,
     pendingTroopGroupId:   groupId || '0',
