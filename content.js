@@ -147,14 +147,14 @@ function findGroupElement(groupId) {
 
 function waitForGroupElement(groupId) {
   return new Promise(resolve => {
-    let elapsed = 0;
-    const check = () => {
+    const el = findGroupElement(groupId);
+    if (el) return resolve(el);
+    const observer = new MutationObserver(() => {
       const el = findGroupElement(groupId);
-      if (el) return resolve(el);
-      if (elapsed >= 8000) return resolve(null);
-      elapsed += 100; setTimeout(check, 100);
-    };
-    check();
+      if (el) { observer.disconnect(); resolve(el); }
+    });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    setTimeout(() => { observer.disconnect(); resolve(null); }, 8000);
   });
 }
 
@@ -251,15 +251,7 @@ async function main() {
   // Página de tropas: lê e envia para o servidor
   if (!isUnitsPage()) return;
 
-  // Retry até 2s caso o storage ainda não esteja escrito (race condition)
-  let data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
-  if (!data.pendingTroopRequest) {
-    for (let i = 0; i < 4; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
-      if (data.pendingTroopRequest) break;
-    }
-  }
+  const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
   if (!data.pendingTroopRequest) return;
 
   const groupId   = data.pendingTroopGroupId   || '0';
@@ -319,8 +311,12 @@ async function main() {
   }
 }
 
-main();
-waitForQuestlog();
+// Arranca logo no DOMContentLoaded sem esperar recursos externos
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => { main(); waitForQuestlog(); });
+} else {
+  main(); waitForQuestlog();
+}
 
 // ── Recebe dados do page_reader (MAIN world) ─────────────────────────────────
 
