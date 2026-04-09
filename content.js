@@ -228,14 +228,16 @@ function waitForQuestlog() {
 // ── Ponto de entrada ─────────────────────────────────────────────────────────
 
 async function main() {
-  // Página de grupos: extrai e guarda
+  // Página de grupos: só extrai se aberta pela extensão
   if (isGroupsPage()) {
+    const { pendingGroupsExtract } = await getStorage('pendingGroupsExtract');
+    if (!pendingGroupsExtract) return;
+
     let attempts = 0;
     const tryExtract = async () => {
       const groups = extractTWGroups();
       if (groups) {
-        await chrome.storage.local.set({ twGroups: groups });
-        // Envia grupos para o servidor para o painel os mostrar
+        await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
         const { eosToken } = await getStorage('eosToken');
         if (eosToken) {
           fetch(`${EOS_SERVER}/api/tw-groups`, {
@@ -335,6 +337,7 @@ window.addEventListener('message', (event) => {
   if (event.data.type === 'EOS_EXTRACT_GROUPS_REQUEST') {
     const world = window.location.hostname.split('.')[0];
     const url = `https://${world}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;
+    chrome.storage.local.set({ pendingGroupsExtract: true });
     chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
     return;
   }
