@@ -117,21 +117,34 @@ function showOverlay(msg, type = 'info') {
 
 // ── Clique de grupo ──────────────────────────────────────────────────────────
 
+function findGroupsContainer() {
+  // Procura o elemento que contém directamente o texto "Grupos:" (TW PT)
+  for (const el of document.querySelectorAll('div, td, span')) {
+    for (const node of el.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE && /grupos:/i.test(node.textContent)) {
+        return el;
+      }
+    }
+  }
+  return null;
+}
+
 function findGroupElement(groupId) {
-  // Para "Todos" (id=0): procura link sem group= ou com group=0
+  const scope = findGroupsContainer() || document;
+
   if (groupId === '0') {
-    return document.querySelector('a[href*="group=0"]')
-        || Array.from(document.querySelectorAll('a')).find(a => {
+    return scope.querySelector('a[href*="group=0"]')
+        || Array.from(scope.querySelectorAll('a')).find(a => {
              const h = a.getAttribute('href') || '';
              return h.includes('mode=units') && !h.includes('group=');
            })
         || null;
   }
-  // Para grupos específicos: tenta vários seletores usados pelo TW PT
-  return document.querySelector(`a[href*="group=${groupId}"]`)
-      || document.querySelector(`a[data-group-id="${groupId}"]`)
+
+  return scope.querySelector(`a[href*="group=${groupId}"]`)
+      || scope.querySelector(`a[data-group-id="${groupId}"]`)
       || (() => {
-           for (const el of document.querySelectorAll('[onclick]')) {
+           for (const el of scope.querySelectorAll('[onclick]')) {
              if ((el.getAttribute('onclick') || '').includes(groupId)) return el;
            }
            return null;
