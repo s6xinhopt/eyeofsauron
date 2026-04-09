@@ -264,7 +264,7 @@ async function main() {
 
   if (!token) return;
 
-  // Clica no grupo correto (incluindo "Todos" se necessário)
+  // Passo 1: clica no grupo correto
   const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
   if (!groupClicked) {
     const el = await waitForGroupElement(groupId);
@@ -275,6 +275,19 @@ async function main() {
     }
   }
   sessionStorage.removeItem('eos_group_clicked');
+
+  // Passo 2: clica em [todos] da paginação para ver todas as aldeias de uma vez
+  const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
+  if (!pagClicked) {
+    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
+      .find(a => /^todos$/i.test(a.textContent.trim()));
+    if (pagTodos) {
+      showOverlay('⚔️ A carregar todas as páginas...');
+      sessionStorage.setItem('eos_pagination_clicked', '1');
+      pagTodos.click(); return;
+    }
+  }
+  sessionStorage.removeItem('eos_pagination_clicked');
 
   showOverlay('⚔️ A ler tropas...');
 
