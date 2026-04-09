@@ -7,7 +7,7 @@ const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 
 function isUnitsPage() {
   const p = new URLSearchParams(window.location.search);
-  return p.get('screen') === 'overview_villages' && p.get('mode') === 'units';
+  return p.get('screen') === 'place' && p.get('mode') === 'call';
 }
 
 function isGroupsPage() {
@@ -19,88 +19,50 @@ async function getStorage(...keys) {
   return chrome.storage.local.get(keys);
 }
 
-// ── Leitura de tropas ────────────────────────────────────────────────────────
+// ── Leitura de tropas (via página de Mass Support) ───────────────────────────
+
+const TROOP_NAMES = ['spear','sword','axe','archer','spy','light','marcher','heavy','ram','catapult','knight','snob'];
 
 function readTroops() {
-  const table = getUnitsTable();
+  // Mesmo método do Support Sender: lê #village_troup_list com data-unit
+  const table = document.querySelector('#village_troup_list');
   if (!table) return null;
 
-  const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
-  if (!headerRow) return null;
+  const rows = Array.from(table.querySelectorAll('tbody tr'));
+  if (!rows.length) return null;
 
-  const colMap = {};
-  Array.from(headerRow.querySelectorAll('th,td')).forEach((cell, idx) => {
-    const img = cell.querySelector('img');
-    if (!img) return;
-    const ref = [(img.src||''), (img.alt||''), (img.title||'')].join(' ').toLowerCase();
-    const UNITS = {
-      spear:['spear','lance'], sword:['sword','espada'], axe:['axe','machado'],
-      archer:['archer','arqueiro'], spy:['spy','batedor','explorador'],
-      marcher:['marcher'], light:['light','ligeira'], heavy:['heavy','pesada'],
-      ram:['ram','ariete'], catapult:['catapult','catapulta'],
-      knight:['knight','paladino'], snob:['snob','nobre']
-    };
-    for (const [unit, keys] of Object.entries(UNITS)) {
-      if (keys.some(k => ref.includes(k))) { colMap[idx] = unit; break; }
+  const totals = {};
+  for (const unit of TROOP_NAMES) totals[unit] = 0;
+
+  rows.forEach(row => {
+    for (const unit of TROOP_NAMES) {
+      const cell = row.querySelector(`[data-unit='${unit}']`);
+      if (!cell) continue;
+      const v = parseInt((cell.textContent || '').replace(/\D/g, '')) || 0;
+      totals[unit] = (totals[unit] || 0) + v;
     }
   });
 
-  if (!Object.keys(colMap).length) return null;
+  // Remove unidades com 0 para não poluir o snapshot
+  for (const unit of TROOP_NAMES) {
+    if (!totals[unit]) delete totals[unit];
+  }
 
-  // Procura a linha "As suas próprias" do resumo agregado (primeira secção da tabela)
-  // É a primeira linha de dados que NÃO tem nome de aldeia (primeira td sem link)
-  const rows = Array.from(table.querySelectorAll('tbody tr'));
-
-  // Estratégia: encontra a linha cujo primeiro td é "as suas próprias" ou similar
-  // A tabela tem secções por aldeia; a primeira linha de cada secção é o nome da aldeia
-  // e a segunda é "as suas próprias" — queremos somar apenas as linhas "as suas próprias"
-  // de todas as aldeias (tropas em casa)
-  const ownRows = rows.filter(row => {
-    const firstTd = row.querySelector('td');
-    if (!firstTd) return false;
-    const txt = firstTd.textContent.trim().toLowerCase();
-    return txt.includes('suas') || txt.includes('próprias') || txt.includes('proprias') || txt.includes('own');
-  });
-
-  // Fallback: se não encontrar, usa todas as linhas "total" de cada aldeia
-  const targetRows = ownRows.length > 0 ? ownRows : rows.filter(row => {
-    const firstTd = row.querySelector('td');
-    if (!firstTd) return false;
-    const txt = firstTd.textContent.trim().toLowerCase();
-    return txt === 'total';
-  });
-
-  // Último fallback: soma todas as linhas (comportamento antigo)
-  const readRows = targetRows.length > 0 ? targetRows : rows;
-
-  const totals = {};
-  readRows.forEach(row => {
-    Array.from(row.querySelectorAll('td')).forEach((cell, idx) => {
-      if (colMap[idx]) {
-        const v = parseInt((cell.textContent||'').replace(/\D/g,'')) || 0;
-        totals[colMap[idx]] = (totals[colMap[idx]] || 0) + v;
-      }
-    });
-  });
-
-  return totals;
-}
-
-function getUnitsTable() {
-  const t = document.querySelector('#units_table')
-         || document.querySelector('table.vis.overview_table')
-         || document.querySelector('table.vis');
-  return (t && t.querySelectorAll('tr').length > 1) ? t : null;
+  return Object.keys(totals).length ? totals : null;
 }
 
 function waitForTable() {
   return new Promise((resolve, reject) => {
-    if (getUnitsTable()) return resolve();
+    const ready = () => {
+      const t = document.querySelector('#village_troup_list');
+      return t && t.querySelectorAll('tbody tr').length > 0;
+    };
+    if (ready()) return resolve();
     const observer = new MutationObserver(() => {
-      if (getUnitsTable()) { observer.disconnect(); resolve(); }
+      if (ready()) { observer.disconnect(); resolve(); }
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout')); }, 10000);
+    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout')); }, 15000);
   });
 }
 
@@ -305,31 +267,6 @@ async function main() {
 
   if (!token) return;
 
-  // Passo 1: clica no grupo correto
-  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (!groupClicked) {
-    const el = await waitForGroupElement(groupId);
-    if (el) {
-      showOverlay('⚔️ A selecionar grupo...');
-      sessionStorage.setItem('eos_group_clicked', groupId);
-      el.click(); return;
-    }
-  }
-  sessionStorage.removeItem('eos_group_clicked');
-
-  // Passo 2: clica em [todos] da paginação para ver todas as aldeias de uma vez
-  const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
-  if (!pagClicked) {
-    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
-      .find(a => /todos/i.test(a.textContent.trim()));
-    if (pagTodos) {
-      showOverlay('⚔️ A carregar todas as páginas...');
-      sessionStorage.setItem('eos_pagination_clicked', '1');
-      pagTodos.click(); return;
-    }
-  }
-  sessionStorage.removeItem('eos_pagination_clicked');
-
   showOverlay('⚔️ A ler tropas...');
 
   try {
@@ -432,31 +369,6 @@ async function runTroopReport() {
   const groupId   = data.pendingTroopGroupId   || '0';
   const groupName = data.pendingTroopGroupName || 'Todos';
   const token     = data.eosToken;
-
-  // Clica no grupo correto
-  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (!groupClicked) {
-    const el = await waitForGroupElement(groupId);
-    if (el) {
-      showOverlay('⚔️ A selecionar grupo...');
-      sessionStorage.setItem('eos_group_clicked', groupId);
-      el.click(); return;
-    }
-  }
-  sessionStorage.removeItem('eos_group_clicked');
-
-  // Paginação
-  const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
-  if (!pagClicked) {
-    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
-      .find(a => /todos/i.test(a.textContent.trim()));
-    if (pagTodos) {
-      showOverlay('⚔️ A carregar todas as páginas...');
-      sessionStorage.setItem('eos_pagination_clicked', '1');
-      pagTodos.click(); return;
-    }
-  }
-  sessionStorage.removeItem('eos_pagination_clicked');
 
   showOverlay('⚔️ A ler tropas...');
   try {

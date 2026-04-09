@@ -120,7 +120,9 @@ async function triggerReport(groupId, groupName) {
   const { eosPlayerName, eosWorld } = await chrome.storage.local.get(['eosPlayerName', 'eosWorld']);
   if (!eosPlayerName || !eosWorld) return;
 
-  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units&type=own_home`;
+  // Mass support page — lê tropas via #village_troup_list (mesmo método do Support Sender)
+  const gParam = (groupId && groupId !== '0') ? `&group=${groupId}` : '';
+  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call${gParam}`;
   await chrome.storage.local.set({
     pendingTroopRequest:   true,
     pendingTroopGroupId:   groupId || '0',
