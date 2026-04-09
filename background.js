@@ -28,8 +28,15 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
       });
       console.log(`[EOS] Autenticado: ${playerName} (${data.role})`);
 
-      // Sincroniza agendamentos do servidor para os alarmes locais
-      if (data.status === 'approved') syncSchedules(data.token);
+      if (data.status === 'approved') {
+        syncSchedules(data.token);
+        // Garante que o alarme de polling existe (recria se o service worker reiniciou)
+        chrome.alarms.get('check-requests', a => {
+          if (!a) chrome.alarms.create('check-requests', { periodInMinutes: 2 });
+        });
+        // Se a liderança pediu tropas, dispara imediatamente
+        if (data.troop_request) await triggerReport('0', 'Todos');
+      }
     }
   } catch (err) {
     console.error('[EOS] handlePlayerSeen:', err);
@@ -105,24 +112,42 @@ async function triggerReport(groupId, groupName) {
   chrome.tabs.create({ url: troopsUrl, active: false });
 }
 
+// ── Verifica pedidos de tropas da liderança ───────────────────────────────────
+
+async function checkTroopRequest() {
+  const { eosToken } = await chrome.storage.local.get('eosToken');
+  if (!eosToken) return;
+  try {
+    const res = await fetch(`${EOS_SERVER}/api/check`, {
+      headers: { Authorization: `Bearer ${eosToken}` }
+    });
+    if (!res.ok) return;
+    const { troop_request } = await res.json();
+    if (troop_request) await triggerReport('0', 'Todos');
+  } catch (_) {}
+}
+
 // ── Eventos ───────────────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(async () => {
   const { autoUpdateSchedules } = await chrome.storage.local.get('autoUpdateSchedules');
   if (autoUpdateSchedules) setupAlarms(autoUpdateSchedules);
+  chrome.alarms.create('check-requests', { periodInMinutes: 2 });
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   const { eosToken, autoUpdateSchedules } = await chrome.storage.local.get(['eosToken', 'autoUpdateSchedules']);
   if (eosToken) {
-    // checkMissed=true: verifica se houve atualizações falhadas enquanto o PC estava desligado
     syncSchedules(eosToken, true);
+    checkTroopRequest();
   } else if (autoUpdateSchedules) {
     setupAlarms(autoUpdateSchedules);
   }
+  chrome.alarms.create('check-requests', { periodInMinutes: 2 });
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'check-requests') { await checkTroopRequest(); return; }
   if (!alarm.name.startsWith('auto-report-')) return;
   const groupId = alarm.name.replace('auto-report-', '');
   const { autoUpdateSchedules } = await chrome.storage.local.get('autoUpdateSchedules');
