@@ -18,16 +18,16 @@
     "https://eos-server-sooty.vercel.app/*"
   ],
   "icons": {
-    "128": "icons/icon128.png"
+    "128": "background/frame_eye.png"
   },
   "action": {
     "default_icon": {
-      "128": "icons/icon128.png"
+      "128": "background/frame_eye.png"
     }
   },
   "web_accessible_resources": [
     {
-      "resources": ["background/eye_of_sauron.gif"],
+      "resources": ["background/eye_of_sauron.gif", "background/frame_eye.png"],
       "matches": ["*://*.tribalwars.com.pt/*"]
     }
   ],
