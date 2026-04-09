@@ -280,7 +280,7 @@ async function main() {
   const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
   if (!pagClicked) {
     const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
-      .find(a => /^todos$/i.test(a.textContent.trim()));
+      .find(a => /todos/i.test(a.textContent.trim()));
     if (pagTodos) {
       showOverlay('⚔️ A carregar todas as páginas...');
       sessionStorage.setItem('eos_pagination_clicked', '1');
