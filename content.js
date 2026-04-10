@@ -15,10 +15,6 @@ function isGroupsPage() {
   return p.get('screen') === 'overview_villages' && p.get('mode') === 'groups';
 }
 
-function isTotalUnitsPage() {
-  const p = new URLSearchParams(window.location.search);
-  return p.get('screen') === 'overview_villages' && p.get('mode') === 'units' && p.get('type') === 'complete';
-}
 
 async function getStorage(...keys) {
   return chrome.storage.local.get(keys);
@@ -100,112 +96,6 @@ function classifyVillages() {
   });
 
   return result;
-}
-
-// ── Leitura do TOTAL de tropas (via overview_villages&mode=units&type=complete) ──
-
-function findUnitsOverviewTable() {
-  // Tenta vários selectores possíveis para a tabela de tropas completas
-  return document.querySelector('#units_table')
-      || document.querySelector('table.vis.overview_table')
-      || document.querySelector('#content_value table.vis')
-      || document.querySelector('.overview_table')
-      || document.querySelector('#content_value table');
-}
-
-function readTotalTroops() {
-  const table = findUnitsOverviewTable();
-  if (!table) {
-    console.log('[TW Reporter] readTotalTroops: nenhuma tabela encontrada');
-    return null;
-  }
-  console.log('[TW Reporter] readTotalTroops: tabela encontrada', table.id || table.className);
-
-  // 1. Descobre o mapeamento coluna → unidade a partir do header (imagens)
-  const headerRow = table.querySelector('tr');
-  if (!headerRow) return null;
-
-  const headerCells = Array.from(headerRow.querySelectorAll('th, td'));
-  const unitColMap = []; // [{unit, index}]
-
-  headerCells.forEach((cell, idx) => {
-    for (const unit of TROOP_NAMES) {
-      const img = cell.querySelector(`img[src*="unit_${unit}"]`);
-      if (img) {
-        unitColMap.push({ unit, index: idx });
-        break;
-      }
-    }
-  });
-
-  console.log('[TW Reporter] unitColMap:', unitColMap.map(u => `${u.unit}@${u.index}`).join(', '));
-  if (!unitColMap.length) return null;
-
-  // 2. Encontra TODAS as rows "total" (uma por aldeia) e soma os valores
-  const allRows = Array.from(table.querySelectorAll('tr'));
-  const totalRows = [];
-
-  for (const row of allRows) {
-    const cells = row.querySelectorAll('td');
-    if (!cells.length) continue;
-    for (let i = 0; i < Math.min(cells.length, 3); i++) {
-      const txt = (cells[i].textContent || '').trim().toLowerCase();
-      if (txt === 'total' || txt === 'total:') {
-        totalRows.push(row);
-        break;
-      }
-    }
-  }
-
-  // Fallback: procura por classe
-  if (!totalRows.length) {
-    const candidates = table.querySelectorAll('tr.units_total, tr[class*="total"]');
-    totalRows.push(...Array.from(candidates));
-  }
-
-  if (!totalRows.length) {
-    console.log('[TW Reporter] readTotalTroops: nenhuma row "total" encontrada');
-    return null;
-  }
-
-  console.log('[TW Reporter] readTotalTroops: encontradas', totalRows.length, 'rows "total"');
-
-  // 3. Soma os valores de todas as rows "total" usando o mapeamento de colunas
-  const totals = {};
-  for (const unit of TROOP_NAMES) totals[unit] = 0;
-
-  for (const row of totalRows) {
-    const cells = Array.from(row.querySelectorAll('td'));
-    for (const { unit, index } of unitColMap) {
-      if (index < cells.length) {
-        const v = parseInt((cells[index].textContent || '').replace(/\./g, '').replace(/\D/g, '')) || 0;
-        totals[unit] += v;
-      }
-    }
-  }
-
-  // Remove unidades com 0
-  for (const unit of TROOP_NAMES) {
-    if (!totals[unit]) delete totals[unit];
-  }
-
-  console.log('[TW Reporter] readTotalTroops resultado:', JSON.stringify(totals));
-  return Object.keys(totals).length ? totals : null;
-}
-
-function waitForUnitsTable() {
-  return new Promise((resolve, reject) => {
-    const ready = () => {
-      const t = findUnitsOverviewTable();
-      return t && t.querySelectorAll('tr').length > 2;
-    };
-    if (ready()) return resolve();
-    const observer = new MutationObserver(() => {
-      if (ready()) { observer.disconnect(); resolve(); }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout tabela total')); }, 15000);
-  });
 }
 
 function waitForTable() {
@@ -475,54 +365,6 @@ async function main() {
     return;
   }
 
-  // Página de tropas totais (type=complete): lê total e envia
-  if (isTotalUnitsPage()) {
-    const data = await getStorage('pendingTotalTroopRequest', 'eosToken');
-    if (!data.pendingTotalTroopRequest) return;
-
-    const token = data.eosToken;
-    if (!token) return;
-
-    // Paginação: clicar em [todos] para ver todas as aldeias
-    const pagClicked = sessionStorage.getItem('eos_total_pagination_clicked') === '1';
-    if (!pagClicked) {
-      const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
-        .find(a => /todos/i.test(a.textContent.trim()));
-      if (pagTodos) {
-        showOverlay('⚔️ A carregar todas as páginas...');
-        sessionStorage.setItem('eos_total_pagination_clicked', '1');
-        pagTodos.click(); return;
-      }
-    }
-    sessionStorage.removeItem('eos_total_pagination_clicked');
-
-    showOverlay('⚔️ A ler tropas totais...');
-
-    try {
-      await waitForUnitsTable();
-      const totalTroops = readTotalTroops();
-      if (!totalTroops) throw new Error('Não foi possível ler a tabela de tropas totais.');
-
-      const res = await fetch(`${EOS_SERVER}/api/report`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ troops: totalTroops, classification: null, groupId: 'total', groupName: 'Total' })
-      });
-
-      if (!res.ok) throw new Error(`Servidor: ${res.status}`);
-
-      await chrome.storage.local.set({ pendingTotalTroopRequest: false });
-      showOverlay('✔ Tropas totais guardadas!', 'ok');
-      setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
-
-    } catch (err) {
-      await chrome.storage.local.set({ pendingTotalTroopRequest: false });
-      showOverlay('❌ ' + err.message, 'error');
-      setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 4000);
-    }
-    return;
-  }
-
   // Página de tropas: lê e envia para o servidor
   if (!isUnitsPage()) return;
 
@@ -627,15 +469,7 @@ window.addEventListener('message', (event) => {
     return;
   }
 
-  if (event.data.type === 'EOS_FORCE_TOTAL_REPORT') {
-    getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
-      if (!eosToken || !eosWorld) return;
-      chrome.storage.local.set({ pendingTotalTroopRequest: true });
-      const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units&type=complete`;
-      chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
-    });
-    return;
-  }
+
 
   if (event.source !== window) return;
 
