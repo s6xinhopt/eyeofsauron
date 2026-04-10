@@ -36,13 +36,23 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
         chrome.alarms.get('check-requests', a => {
           if (!a) chrome.alarms.create('check-requests', { periodInMinutes: 1 });
         });
-        // Se a liderança pediu tropas, dispara — mas só se não há já um pedido em curso
+        // Se a liderança pediu tropas
         if (data.troop_request) {
           const { pendingTroopRequest } = await chrome.storage.local.get('pendingTroopRequest');
-          if (!pendingTroopRequest) await triggerReport(
-            data.troop_request_group_id   || '0',
-            data.troop_request_group_name || 'Todos'
-          );
+          if (!pendingTroopRequest) {
+            if (data.auto_accept_requests) {
+              await triggerReport(
+                data.troop_request_group_id   || '0',
+                data.troop_request_group_name || 'Todos'
+              );
+            } else {
+              await chrome.storage.local.set({
+                pendingTroopConfirm: true,
+                pendingTroopConfirmGroupId:   data.troop_request_group_id   || '0',
+                pendingTroopConfirmGroupName: data.troop_request_group_name || 'Todos',
+              });
+            }
+          }
         }
       }
     }
@@ -203,13 +213,25 @@ async function checkTroopRequest() {
       headers: { Authorization: `Bearer ${eosToken}` }
     });
     if (!res.ok) return;
-    const { troop_request, troop_request_group_id, troop_request_group_name } = await res.json();
-    if (troop_request) {
-      const { pendingTroopRequest } = await chrome.storage.local.get('pendingTroopRequest');
-      if (!pendingTroopRequest) await triggerReport(
+    const { troop_request, troop_request_group_id, troop_request_group_name, auto_accept_requests } = await res.json();
+    if (!troop_request) return;
+
+    const { pendingTroopRequest } = await chrome.storage.local.get('pendingTroopRequest');
+    if (pendingTroopRequest) return; // já há um report em curso
+
+    if (auto_accept_requests) {
+      // Auto-aceitar: dispara o report imediatamente
+      await triggerReport(
         troop_request_group_id   || '0',
         troop_request_group_name || 'Todos'
       );
+    } else {
+      // Guardar pedido pendente para o content.js mostrar notificação ao jogador
+      await chrome.storage.local.set({
+        pendingTroopConfirm: true,
+        pendingTroopConfirmGroupId:   troop_request_group_id   || '0',
+        pendingTroopConfirmGroupName: troop_request_group_name || 'Todos',
+      });
     }
   } catch (_) {}
 }

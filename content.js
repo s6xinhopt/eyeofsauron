@@ -267,6 +267,53 @@ function waitForQuestlog() {
 
 // ── Ponto de entrada ─────────────────────────────────────────────────────────
 
+// ── Notificação de pedido de tropas (aceitar/recusar) ───────────────────
+
+async function checkTroopConfirmation() {
+  const data = await getStorage('pendingTroopConfirm', 'pendingTroopConfirmGroupId', 'pendingTroopConfirmGroupName');
+  if (!data.pendingTroopConfirm) return;
+  if (document.getElementById('eos-troop-confirm')) return;
+
+  const groupName = data.pendingTroopConfirmGroupName || 'Todos';
+  const bar = document.createElement('div');
+  bar.id = 'eos-troop-confirm';
+  bar.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:linear-gradient(135deg,#1a1008,#100c08);border:1px solid #3a2810;border-left:3px solid #e87830;border-radius:8px;padding:14px 18px;font-family:Segoe UI,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.8);max-width:320px';
+  bar.innerHTML = `
+    <div style="color:#e8a030;font-weight:700;font-size:13px;margin-bottom:6px">⚔️ Pedido de tropas</div>
+    <div style="color:#b09070;font-size:12px;margin-bottom:12px">A liderança pede a atualização das tuas tropas <strong style="color:#e8a030">(${groupName})</strong></div>
+    <div style="display:flex;gap:8px">
+      <button id="eos-confirm-accept" style="flex:1;padding:7px 0;background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer">Aceitar</button>
+      <button id="eos-confirm-refuse" style="flex:1;padding:7px 0;background:#1a1210;color:#807060;border:1px solid #3a2a1a;border-radius:5px;font-size:12px;cursor:pointer">Recusar</button>
+    </div>`;
+  document.body.appendChild(bar);
+
+  document.getElementById('eos-confirm-accept').addEventListener('click', async () => {
+    await chrome.storage.local.set({ pendingTroopConfirm: false });
+    bar.remove();
+    const { eosWorld } = await getStorage('eosWorld');
+    if (!eosWorld) return;
+    chrome.storage.local.set({
+      pendingTroopRequest: true,
+      pendingTroopGroupId: data.pendingTroopConfirmGroupId || '0',
+      pendingTroopGroupName: groupName
+    });
+    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`, active: false });
+  });
+
+  document.getElementById('eos-confirm-refuse').addEventListener('click', async () => {
+    await chrome.storage.local.set({ pendingTroopConfirm: false });
+    bar.remove();
+    const { eosToken } = await getStorage('eosToken');
+    if (eosToken) {
+      fetch(`${EOS_SERVER}/api/members`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
+        body: JSON.stringify({ action: 'refuse_troop_request' })
+      }).catch(() => {});
+    }
+  });
+}
+
 async function main() {
   // Página de grupos: só extrai se aberta pela extensão
   if (isGroupsPage()) {
@@ -360,9 +407,9 @@ async function main() {
 
 // Arranca logo no DOMContentLoaded sem esperar recursos externos
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => { main(); waitForQuestlog(); });
+  document.addEventListener('DOMContentLoaded', () => { main(); waitForQuestlog(); checkTroopConfirmation(); });
 } else {
-  main(); waitForQuestlog();
+  main(); waitForQuestlog(); checkTroopConfirmation();
 }
 
 // ── Recebe dados do page_reader (MAIN world) ─────────────────────────────────
