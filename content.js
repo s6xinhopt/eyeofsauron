@@ -192,7 +192,13 @@ function findGroupElement(groupId) {
 
   return scope.querySelector(`a[href*="group=${groupId}"]`)
       || scope.querySelector(`a[data-group-id="${groupId}"]`)
-      || null;
+      || scope.querySelector(`span.group-menu-item[onclick*="${groupId}"]`)
+      || (() => {
+           for (const el of scope.querySelectorAll('[onclick]')) {
+             if ((el.getAttribute('onclick') || '').includes(groupId)) return el;
+           }
+           return null;
+         })();
 }
 
 function waitForGroupElement(groupId) {
@@ -204,7 +210,7 @@ function waitForGroupElement(groupId) {
       if (el) { observer.disconnect(); resolve(el); }
     });
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-    setTimeout(() => { observer.disconnect(); resolve(null); }, 3000);
+    setTimeout(() => { observer.disconnect(); resolve(null); }, 6000);
   });
 }
 
