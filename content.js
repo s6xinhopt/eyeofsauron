@@ -168,10 +168,14 @@ function findGroupsContainer() {
   return null;
 }
 
-// Verifica se o grupo já está selecionado — apenas pela URL
+// Verifica se o grupo já está selecionado
 function isGroupAlreadySelected(groupId) {
   const urlGroup = new URLSearchParams(window.location.search).get('group');
-  if (groupId === '0') return !urlGroup || urlGroup === '0';
+  if (groupId === '0') {
+    // "Todos" só está selecionado se a URL tem group=0 explícito
+    // (sem group= na URL não garante nada — pode ser outro grupo ativo via AJAX)
+    return urlGroup === '0';
+  }
   return urlGroup === groupId;
 }
 
