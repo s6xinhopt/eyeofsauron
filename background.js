@@ -283,8 +283,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     }
   } else if (message.type === 'CLOSE_TAB') {
     if (sender.tab?.id) chrome.tabs.remove(sender.tab.id);
-    // Após fechar a tab do report, processa o próximo na fila (aguarda 2s para não sobrecarregar)
-    setTimeout(() => processReportQueue(), 2000);
+    // Após fechar a tab do report, processa o próximo na fila
+    setTimeout(() => processReportQueue(), 500);
   } else if (message.type === 'SYNC_SCHEDULES') {
     if (message.token) syncSchedules(message.token);
   }

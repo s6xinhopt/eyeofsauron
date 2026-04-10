@@ -220,7 +220,7 @@ function waitForGroupElement(groupId) {
       if (el) { observer.disconnect(); resolve(el); }
     });
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-    setTimeout(() => { observer.disconnect(); resolve(null); }, 8000);
+    setTimeout(() => { observer.disconnect(); resolve(null); }, 3000);
   });
 }
 
@@ -380,33 +380,43 @@ async function main() {
 
   if (!token) return;
 
-  // Passo 1: clica no grupo correto (skip se já está selecionado)
-  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (!groupClicked && !isGroupAlreadySelected(groupId)) {
-    const el = await waitForGroupElement(groupId);
-    if (el) {
-      showOverlay('⚔️ A selecionar grupo...');
-      sessionStorage.setItem('eos_group_clicked', groupId);
-      el.click(); return;
+  showOverlay('⚔️ A ler tropas...');
+  await handleTroopReport(groupId, groupName, token);
+}
+
+async function handleTroopReport(groupId, groupName, token) {
+  // Passo 1: selecionar grupo (skip se "Todos" ou já selecionado)
+  if (groupId !== '0' && !isGroupAlreadySelected(groupId)) {
+    const alreadyClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
+    if (!alreadyClicked) {
+      // Tenta encontrar o link do grupo imediatamente (sem esperar)
+      const el = findGroupElement(groupId);
+      if (el) {
+        sessionStorage.setItem('eos_group_clicked', groupId);
+        el.click(); return;
+      }
+      // Fallback: espera até 3s
+      const elWait = await waitForGroupElement(groupId);
+      if (elWait) {
+        sessionStorage.setItem('eos_group_clicked', groupId);
+        elWait.click(); return;
+      }
     }
   }
   sessionStorage.removeItem('eos_group_clicked');
 
-  // Passo 2: clica em [todos] da paginação para ver todas as aldeias
-  const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
-  if (!pagClicked) {
+  // Passo 2: paginação — clica em [todos] se existir (skip se já clicou)
+  if (sessionStorage.getItem('eos_pagination_clicked') !== '1') {
     const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
       .find(a => /todos/i.test(a.textContent.trim()));
     if (pagTodos) {
-      showOverlay('⚔️ A carregar todas as páginas...');
       sessionStorage.setItem('eos_pagination_clicked', '1');
       pagTodos.click(); return;
     }
   }
   sessionStorage.removeItem('eos_pagination_clicked');
 
-  showOverlay('⚔️ A ler tropas...');
-
+  // Passo 3: ler tropas e enviar
   try {
     await waitForTable();
     const troops = readTroops();
@@ -423,12 +433,12 @@ async function main() {
 
     await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('✔ Tropas guardadas!', 'ok');
-    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
 
   } catch (err) {
     await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('❌ ' + err.message, 'error');
-    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 4000);
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
   }
 }
 
@@ -511,54 +521,6 @@ chrome.runtime.onMessage.addListener((msg) => {
 async function runTroopReport() {
   const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
   if (!data.pendingTroopRequest || !data.eosToken) return;
-
-  const groupId   = data.pendingTroopGroupId   || '0';
-  const groupName = data.pendingTroopGroupName || 'Todos';
-  const token     = data.eosToken;
-
-  // Passo 1: clica no grupo correto (skip se já está selecionado)
-  const groupClicked2 = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (!groupClicked2 && !isGroupAlreadySelected(groupId)) {
-    const el = await waitForGroupElement(groupId);
-    if (el) {
-      showOverlay('⚔️ A selecionar grupo...');
-      sessionStorage.setItem('eos_group_clicked', groupId);
-      el.click(); return;
-    }
-  }
-  sessionStorage.removeItem('eos_group_clicked');
-
-  // Passo 2: paginação
-  const pagClicked2 = sessionStorage.getItem('eos_pagination_clicked') === '1';
-  if (!pagClicked2) {
-    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
-      .find(a => /todos/i.test(a.textContent.trim()));
-    if (pagTodos) {
-      showOverlay('⚔️ A carregar todas as páginas...');
-      sessionStorage.setItem('eos_pagination_clicked', '1');
-      pagTodos.click(); return;
-    }
-  }
-  sessionStorage.removeItem('eos_pagination_clicked');
-
   showOverlay('⚔️ A ler tropas...');
-  try {
-    await waitForTable();
-    const troops = readTroops();
-    if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
-    const classification = classifyVillages();
-    const res = await fetch(`${EOS_SERVER}/api/report`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ troops, classification, groupId, groupName })
-    });
-    if (!res.ok) throw new Error(`Servidor: ${res.status}`);
-    await chrome.storage.local.set({ pendingTroopRequest: false });
-    showOverlay('✔ Tropas guardadas!', 'ok');
-    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1000);
-  } catch (err) {
-    await chrome.storage.local.set({ pendingTroopRequest: false });
-    showOverlay('❌ ' + err.message, 'error');
-    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
-  }
+  await handleTroopReport(data.pendingTroopGroupId || '0', data.pendingTroopGroupName || 'Todos', data.eosToken);
 }
