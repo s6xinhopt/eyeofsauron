@@ -157,15 +157,10 @@ function showOverlay(msg, type = 'info') {
 
 // ── Clique de grupo ──────────────────────────────────────────────────────────
 
-let _groupsContainerCache = null;
 function findGroupsContainer() {
-  if (_groupsContainerCache && _groupsContainerCache.isConnected) return _groupsContainerCache;
-  // Seletores específicos primeiro (rápidos), fallback genérico limitado ao #content_value
-  const scope = document.getElementById('content_value') || document;
-  for (const el of scope.querySelectorAll('td, div')) {
+  for (const el of document.querySelectorAll('div, td, span, p')) {
     for (const node of el.childNodes) {
       if (node.nodeType === Node.TEXT_NODE && /grupos:/i.test(node.textContent)) {
-        _groupsContainerCache = el;
         return el;
       }
     }
@@ -181,7 +176,7 @@ function isGroupAlreadySelected(groupId) {
 }
 
 function findGroupElement(groupId) {
-  const scope = findGroupsContainer() || document.getElementById('content_value') || document;
+  const scope = findGroupsContainer() || document;
 
   if (groupId === '0') {
     return scope.querySelector('a[href*="group=0"]')
