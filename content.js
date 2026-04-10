@@ -168,6 +168,29 @@ function findGroupsContainer() {
   return null;
 }
 
+// Verifica se o grupo já está selecionado (TW renderiza o grupo ativo como <strong> em vez de <a>)
+function isGroupAlreadySelected(groupId) {
+  const scope = findGroupsContainer() || document;
+  // Grupo "Todos" (id 0) — está selecionado se não há nenhum <a> com group= visível como ativo
+  // e existe um <strong> no container de grupos
+  if (groupId === '0') {
+    // Se não existe link para group=0 mas existe um <strong> com texto curto, é provável que "Todos" esteja ativo
+    const strongs = scope.querySelectorAll('strong');
+    for (const s of strongs) {
+      if (/^todos$/i.test(s.textContent.trim())) return true;
+    }
+    return false;
+  }
+  // Para outros grupos, o TW remove o <a> e coloca o nome dentro de <strong>
+  // Verificamos se existe um <strong> no scope cujo texto corresponde ao nome do grupo
+  // e NÃO existe um <a> com esse group id
+  const hasLink = scope.querySelector(`a[href*="group=${groupId}"]`);
+  if (hasLink) return false; // o link existe, logo não está selecionado
+  // Verifica se a URL atual já tem o grupo selecionado
+  const url = new URLSearchParams(window.location.search);
+  return url.get('group') === groupId;
+}
+
 function findGroupElement(groupId) {
   const scope = findGroupsContainer() || document;
 
@@ -353,9 +376,9 @@ async function main() {
 
   if (!token) return;
 
-  // Passo 1: clica no grupo correto
+  // Passo 1: clica no grupo correto (skip se já está selecionado)
   const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (!groupClicked) {
+  if (!groupClicked && !isGroupAlreadySelected(groupId)) {
     const el = await waitForGroupElement(groupId);
     if (el) {
       showOverlay('⚔️ A selecionar grupo...');
@@ -485,9 +508,9 @@ async function runTroopReport() {
   const groupName = data.pendingTroopGroupName || 'Todos';
   const token     = data.eosToken;
 
-  // Passo 1: clica no grupo correto
+  // Passo 1: clica no grupo correto (skip se já está selecionado)
   const groupClicked2 = sessionStorage.getItem('eos_group_clicked') === groupId;
-  if (!groupClicked2) {
+  if (!groupClicked2 && !isGroupAlreadySelected(groupId)) {
     const el = await waitForGroupElement(groupId);
     if (el) {
       showOverlay('⚔️ A selecionar grupo...');
