@@ -175,18 +175,17 @@ function findGroupsContainer() {
 
 // Verifica se o grupo já está selecionado (TW renderiza o grupo ativo como <strong> em vez de <a>)
 function isGroupAlreadySelected(groupId) {
-  if (groupId === '0') {
-    // URL sem group= ou group=0 → "Todos" está selecionado
-    const urlGroup = new URLSearchParams(window.location.search).get('group');
-    if (!urlGroup || urlGroup === '0') return true;
-    return false;
-  }
-  // Para outros grupos: verificar URL primeiro (mais rápido e fiável)
+  // Verificar URL primeiro — mais rápido e fiável
   const urlGroup = new URLSearchParams(window.location.search).get('group');
+  if (groupId === '0') {
+    return !urlGroup || urlGroup === '0';
+  }
   if (urlGroup === groupId) return true;
-  // Fallback: se não existe <a> clicável para este grupo, está selecionado
-  // (TW remove o link e mostra <strong> no grupo ativo)
+  // Fallback: se o container de grupos já renderizou (tem pelo menos 1 link de grupo)
+  // MAS o link para este grupo específico não existe → está selecionado (TW mostra <strong>)
   const scope = findGroupsContainer() || document.getElementById('content_value') || document;
+  const anyGroupLink = scope.querySelector('a[href*="group="]');
+  if (!anyGroupLink) return false; // DOM ainda não carregou os grupos — não assumir
   return !scope.querySelector(`a[href*="group=${groupId}"]`);
 }
 
