@@ -104,75 +104,99 @@ function classifyVillages() {
 
 // ── Leitura do TOTAL de tropas (via overview_villages&mode=units&type=complete) ──
 
-function readTotalTroops() {
-  // A página type=complete mostra todas as tropas (na aldeia, em suporte, em trânsito)
-  // Procura a última row "total" na tabela #units_table que tem os totais globais
-  const table = document.querySelector('#units_table');
-  if (!table) return null;
+function findUnitsOverviewTable() {
+  // Tenta vários selectores possíveis para a tabela de tropas completas
+  return document.querySelector('#units_table')
+      || document.querySelector('table.vis.overview_table')
+      || document.querySelector('#content_value table.vis')
+      || document.querySelector('.overview_table')
+      || document.querySelector('#content_value table');
+}
 
-  // Procura todas as rows com classe que contém "total" ou com td que diz "total"
+function readTotalTroops() {
+  const table = findUnitsOverviewTable();
+  if (!table) {
+    console.log('[TW Reporter] readTotalTroops: nenhuma tabela encontrada');
+    return null;
+  }
+  console.log('[TW Reporter] readTotalTroops: tabela encontrada', table.id || table.className);
+
+  // 1. Descobre o mapeamento coluna → unidade a partir do header (imagens)
+  const headerRow = table.querySelector('tr');
+  if (!headerRow) return null;
+
+  const headerCells = Array.from(headerRow.querySelectorAll('th, td'));
+  const unitColMap = []; // [{unit, index}]
+
+  headerCells.forEach((cell, idx) => {
+    for (const unit of TROOP_NAMES) {
+      const img = cell.querySelector(`img[src*="unit_${unit}"]`);
+      if (img) {
+        unitColMap.push({ unit, index: idx });
+        break;
+      }
+    }
+  });
+
+  console.log('[TW Reporter] unitColMap:', unitColMap.map(u => `${u.unit}@${u.index}`).join(', '));
+  if (!unitColMap.length) return null;
+
+  // 2. Encontra a ÚLTIMA row com "total" — é o total global
   const allRows = Array.from(table.querySelectorAll('tr'));
   let totalRow = null;
 
-  // A última row cujo primeiro td contenha "total" é o total global
   for (const row of allRows) {
-    const firstCell = row.querySelector('td, th');
-    if (firstCell && /^\s*total\s*$/i.test(firstCell.textContent.trim())) {
-      totalRow = row;
-    }
-  }
-
-  // Fallback: procura a última tr.units_total ou tr com classe que contenha "total"
-  if (!totalRow) {
-    const candidates = table.querySelectorAll('tr.units_total, tr[class*="total"]');
-    if (candidates.length) totalRow = candidates[candidates.length - 1];
-  }
-
-  if (!totalRow) return null;
-
-  const totals = {};
-  const cells = totalRow.querySelectorAll('td');
-
-  // Na tabela type=complete, as colunas de unidades têm classe com o nome da unidade
-  for (const unit of TROOP_NAMES) {
-    const cell = totalRow.querySelector(`td.unit-item-${unit}, [data-unit='${unit}']`);
-    if (cell) {
-      const v = parseInt((cell.textContent || '').replace(/\D/g, '')) || 0;
-      if (v > 0) totals[unit] = v;
-      continue;
-    }
-  }
-
-  // Se não encontrou por classe, tenta por posição (as colunas seguem a mesma ordem do header)
-  if (Object.keys(totals).length === 0) {
-    const headers = Array.from(table.querySelectorAll('th'));
-    for (const unit of TROOP_NAMES) {
-      const hIdx = headers.findIndex(h => {
-        const img = h.querySelector(`img[src*="${unit}"]`);
-        return !!img;
-      });
-      if (hIdx >= 0 && cells[hIdx]) {
-        const v = parseInt((cells[hIdx].textContent || '').replace(/\D/g, '')) || 0;
-        if (v > 0) totals[unit] = v;
+    const cells = row.querySelectorAll('td');
+    if (!cells.length) continue;
+    // Verifica se alguma das primeiras 2 células contém "total"
+    for (let i = 0; i < Math.min(cells.length, 3); i++) {
+      const txt = (cells[i].textContent || '').trim().toLowerCase();
+      if (txt === 'total' || txt === 'total:') {
+        totalRow = row;
+        break;
       }
     }
   }
 
+  // Fallback: procura por classe
+  if (!totalRow) {
+    const candidates = table.querySelectorAll('tr.units_total, tr[class*="total"], tr.row_a:last-child, tr.row_b:last-child');
+    if (candidates.length) totalRow = candidates[candidates.length - 1];
+  }
+
+  if (!totalRow) {
+    console.log('[TW Reporter] readTotalTroops: row "total" não encontrada');
+    return null;
+  }
+
+  // 3. Lê os valores usando o mapeamento de colunas
+  const cells = Array.from(totalRow.querySelectorAll('td'));
+  console.log('[TW Reporter] totalRow cells:', cells.length, 'texto:', cells.map(c => c.textContent?.trim().substring(0, 10)).join(' | '));
+
+  const totals = {};
+  for (const { unit, index } of unitColMap) {
+    if (index < cells.length) {
+      const v = parseInt((cells[index].textContent || '').replace(/\./g, '').replace(/\D/g, '')) || 0;
+      if (v > 0) totals[unit] = v;
+    }
+  }
+
+  console.log('[TW Reporter] readTotalTroops resultado:', JSON.stringify(totals));
   return Object.keys(totals).length ? totals : null;
 }
 
 function waitForUnitsTable() {
   return new Promise((resolve, reject) => {
     const ready = () => {
-      const t = document.querySelector('#units_table');
-      return t && t.querySelectorAll('tbody tr').length > 0;
+      const t = findUnitsOverviewTable();
+      return t && t.querySelectorAll('tr').length > 2;
     };
     if (ready()) return resolve();
     const observer = new MutationObserver(() => {
       if (ready()) { observer.disconnect(); resolve(); }
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout')); }, 15000);
+    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout tabela total')); }, 15000);
   });
 }
 
