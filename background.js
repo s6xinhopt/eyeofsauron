@@ -117,8 +117,22 @@ async function setupAlarms(schedules) {
 }
 
 async function triggerReport(groupId, groupName) {
-  const { eosPlayerName, eosWorld } = await chrome.storage.local.get(['eosPlayerName', 'eosWorld']);
+  const { eosPlayerName, eosWorld, pendingTroopRequest } = await chrome.storage.local.get(
+    ['eosPlayerName', 'eosWorld', 'pendingTroopRequest']
+  );
   if (!eosPlayerName || !eosWorld) return;
+
+  // Se já há um report em curso, coloca na fila e sai
+  if (pendingTroopRequest) {
+    const { reportQueue = [] } = await chrome.storage.local.get('reportQueue');
+    // Evita duplicados na fila (mesmo groupId)
+    if (!reportQueue.some(r => r.groupId === (groupId || '0'))) {
+      reportQueue.push({ groupId: groupId || '0', groupName: groupName || 'Todos' });
+      await chrome.storage.local.set({ reportQueue });
+      console.log(`[EOS] Report para grupo "${groupName || 'Todos'}" adicionado à fila (${reportQueue.length} na fila)`);
+    }
+    return;
+  }
 
   // Mass support page — lê tropas via #village_troup_list (mesmo método do Support Sender)
   const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`;
@@ -128,6 +142,7 @@ async function triggerReport(groupId, groupName) {
     pendingTroopGroupName: groupName || 'Todos'
   });
 
+  console.log(`[EOS] A iniciar report para grupo "${groupName || 'Todos'}"`);
   const tab = await chrome.tabs.create({ url: troopsUrl, active: false });
 
   // Envia mensagem direta à tab quando terminar de carregar (evita race condition com storage)
@@ -141,6 +156,17 @@ async function triggerReport(groupId, groupName) {
     }).catch(() => {});
   };
   chrome.tabs.onUpdated.addListener(listener);
+}
+
+// Processa o próximo report na fila (chamado quando um report termina)
+async function processReportQueue() {
+  const { reportQueue = [] } = await chrome.storage.local.get('reportQueue');
+  if (reportQueue.length === 0) return;
+
+  const next = reportQueue.shift();
+  await chrome.storage.local.set({ reportQueue });
+  console.log(`[EOS] A processar próximo da fila: grupo "${next.groupName}" (${reportQueue.length} restantes)`);
+  await triggerReport(next.groupId, next.groupName);
 }
 
 // ── Badge de notificação: pedidos pendentes de membros ───────────────────────
@@ -231,6 +257,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     chrome.tabs.create({ url: message.url, active: message.active !== false });
   } else if (message.type === 'CLOSE_TAB') {
     if (sender.tab?.id) chrome.tabs.remove(sender.tab.id);
+    // Após fechar a tab do report, processa o próximo na fila (aguarda 2s para não sobrecarregar)
+    setTimeout(() => processReportQueue(), 2000);
   } else if (message.type === 'SYNC_SCHEDULES') {
     if (message.token) syncSchedules(message.token);
   }
