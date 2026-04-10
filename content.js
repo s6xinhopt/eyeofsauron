@@ -141,44 +141,52 @@ function readTotalTroops() {
   console.log('[TW Reporter] unitColMap:', unitColMap.map(u => `${u.unit}@${u.index}`).join(', '));
   if (!unitColMap.length) return null;
 
-  // 2. Encontra a ÚLTIMA row com "total" — é o total global
+  // 2. Encontra TODAS as rows "total" (uma por aldeia) e soma os valores
   const allRows = Array.from(table.querySelectorAll('tr'));
-  let totalRow = null;
+  const totalRows = [];
 
   for (const row of allRows) {
     const cells = row.querySelectorAll('td');
     if (!cells.length) continue;
-    // Verifica se alguma das primeiras 2 células contém "total"
     for (let i = 0; i < Math.min(cells.length, 3); i++) {
       const txt = (cells[i].textContent || '').trim().toLowerCase();
       if (txt === 'total' || txt === 'total:') {
-        totalRow = row;
+        totalRows.push(row);
         break;
       }
     }
   }
 
   // Fallback: procura por classe
-  if (!totalRow) {
-    const candidates = table.querySelectorAll('tr.units_total, tr[class*="total"], tr.row_a:last-child, tr.row_b:last-child');
-    if (candidates.length) totalRow = candidates[candidates.length - 1];
+  if (!totalRows.length) {
+    const candidates = table.querySelectorAll('tr.units_total, tr[class*="total"]');
+    totalRows.push(...Array.from(candidates));
   }
 
-  if (!totalRow) {
-    console.log('[TW Reporter] readTotalTroops: row "total" não encontrada');
+  if (!totalRows.length) {
+    console.log('[TW Reporter] readTotalTroops: nenhuma row "total" encontrada');
     return null;
   }
 
-  // 3. Lê os valores usando o mapeamento de colunas
-  const cells = Array.from(totalRow.querySelectorAll('td'));
-  console.log('[TW Reporter] totalRow cells:', cells.length, 'texto:', cells.map(c => c.textContent?.trim().substring(0, 10)).join(' | '));
+  console.log('[TW Reporter] readTotalTroops: encontradas', totalRows.length, 'rows "total"');
 
+  // 3. Soma os valores de todas as rows "total" usando o mapeamento de colunas
   const totals = {};
-  for (const { unit, index } of unitColMap) {
-    if (index < cells.length) {
-      const v = parseInt((cells[index].textContent || '').replace(/\./g, '').replace(/\D/g, '')) || 0;
-      if (v > 0) totals[unit] = v;
+  for (const unit of TROOP_NAMES) totals[unit] = 0;
+
+  for (const row of totalRows) {
+    const cells = Array.from(row.querySelectorAll('td'));
+    for (const { unit, index } of unitColMap) {
+      if (index < cells.length) {
+        const v = parseInt((cells[index].textContent || '').replace(/\./g, '').replace(/\D/g, '')) || 0;
+        totals[unit] += v;
+      }
     }
+  }
+
+  // Remove unidades com 0
+  for (const unit of TROOP_NAMES) {
+    if (!totals[unit]) delete totals[unit];
   }
 
   console.log('[TW Reporter] readTotalTroops resultado:', JSON.stringify(totals));
