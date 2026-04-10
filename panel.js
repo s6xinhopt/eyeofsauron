@@ -91,20 +91,20 @@
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: 5px;
-      padding: 7px 12px;
+      gap: 6px;
+      padding: 8px 12px;
       background: #0f0f1f;
       border-bottom: 1px solid #2a2a4a;
       flex-shrink: 0;
-      min-height: 36px;
+      min-height: 40px;
     }
     .group-pill {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 10px;
-      border-radius: 12px;
-      font-size: 11px;
+      gap: 5px;
+      padding: 5px 14px;
+      border-radius: 14px;
+      font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       border: 1px solid var(--gc, #c0a060);
@@ -121,9 +121,9 @@
     }
     .group-pill-del:hover { opacity: 1; }
     .btn-new-group {
-      padding: 3px 10px;
-      border-radius: 12px;
-      font-size: 11px;
+      padding: 5px 14px;
+      border-radius: 14px;
+      font-size: 12px;
       cursor: pointer;
       border: 1px dashed #2a2a4a;
       color: #444;
@@ -247,7 +247,7 @@
       text-align: center;
     }
     .members-table th.col-player { text-align: left; padding-left: 14px; min-width: 140px; }
-    .members-table th img { width: 16px; height: 16px; image-rendering: pixelated; vertical-align: middle; }
+    .members-table th img { width: 20px; height: 20px; image-rendering: pixelated; vertical-align: middle; }
     .members-table td {
       padding: 7px 8px;
       border-bottom: 1px solid #1a1a2e;
@@ -519,7 +519,7 @@
       <div class="group-filter-bar" id="groupFilterBar"></div>
 
       <div class="tabs">
-        <button class="tab-btn active" data-tab="paneMembers">⚔️ Membros</button>
+        <button class="tab-btn active" data-tab="paneMembers">⚔️ Tribo</button>
         <button class="tab-btn" id="tabPendingBtn" style="display:none" data-tab="panePending">
           ⏳ Pedidos <span class="tab-badge" id="pendingBadge" style="display:none"></span>
         </button>
