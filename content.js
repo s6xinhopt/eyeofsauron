@@ -370,69 +370,55 @@ async function main() {
 
   if (!token) return;
 
-  showOverlay('⚔️ A ler tropas...');
-  await handleTroopReport(groupId, groupName, token);
-}
-
-async function handleTroopReport(groupId, groupName, token) {
-  // Passo 1: selecionar grupo (skip se "Todos" ou já selecionado)
-  if (groupId !== '0' && !isGroupAlreadySelected(groupId)) {
-    if (sessionStorage.getItem('eos_group_clicked') !== groupId) {
-      const el = findGroupElement(groupId);
-      if (el) {
-        sessionStorage.setItem('eos_group_clicked', groupId);
-        el.click(); return;
-      }
-      // Elemento não encontrado ainda — espera brevemente
-      const elWait = await waitForGroupElement(groupId);
-      if (elWait) {
-        sessionStorage.setItem('eos_group_clicked', groupId);
-        elWait.click(); return;
-      }
-      // Grupo não encontrado — avança mesmo assim
+  // Passo 1: clica no grupo correto (skip se já está selecionado)
+  const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
+  if (!groupClicked && !isGroupAlreadySelected(groupId)) {
+    const el = await waitForGroupElement(groupId);
+    if (el) {
+      showOverlay('⚔️ A selecionar grupo...');
+      sessionStorage.setItem('eos_group_clicked', groupId);
+      el.click(); return;
     }
   }
   sessionStorage.removeItem('eos_group_clicked');
 
-  // Passo 2: paginação — clica em [todos] se existir e se ainda não clicou
-  // Verifica se a paginação existe primeiro; se não existe, não há delay
-  if (sessionStorage.getItem('eos_pagination_clicked') !== '1') {
-    const pagTodos = document.querySelector('a.paged-nav-item[href*="page=-1"]')
-      || Array.from(document.querySelectorAll('a.paged-nav-item')).find(a => /todos/i.test(a.textContent.trim()));
+  // Passo 2: clica em [todos] da paginação para ver todas as aldeias
+  const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
+  if (!pagClicked) {
+    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
+      .find(a => /todos/i.test(a.textContent.trim()));
     if (pagTodos) {
+      showOverlay('⚔️ A carregar todas as páginas...');
       sessionStorage.setItem('eos_pagination_clicked', '1');
       pagTodos.click(); return;
     }
   }
   sessionStorage.removeItem('eos_pagination_clicked');
 
-  // Passo 3: ler tropas e enviar
+  showOverlay('⚔️ A ler tropas...');
+
   try {
     await waitForTable();
     const troops = readTroops();
     if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
     const classification = classifyVillages();
 
-    // Envio em paralelo: limpa flag + envia para servidor
-    const [res] = await Promise.all([
-      fetch(`${EOS_SERVER}/api/report`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ troops, classification, groupId, groupName })
-      }),
-      chrome.storage.local.set({ pendingTroopRequest: false })
-    ]);
+    const res = await fetch(`${EOS_SERVER}/api/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ troops, classification, groupId, groupName })
+    });
 
     if (!res.ok) throw new Error(`Servidor: ${res.status}`);
 
+    await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('✔ Tropas guardadas!', 'ok');
-    // Fecha tab imediatamente — não precisa de esperar
-    chrome.runtime.sendMessage({ type: 'CLOSE_TAB' });
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
 
   } catch (err) {
     await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('❌ ' + err.message, 'error');
-    setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 2000);
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
   }
 }
 
@@ -515,8 +501,6 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 
 async function runTroopReport() {
-  const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
-  if (!data.pendingTroopRequest || !data.eosToken) return;
-  showOverlay('⚔️ A ler tropas...');
-  await handleTroopReport(data.pendingTroopGroupId || '0', data.pendingTroopGroupName || 'Todos', data.eosToken);
+  // Relança o fluxo principal — main() já lida com todo o fluxo de grupo/paginação/leitura
+  await main();
 }
