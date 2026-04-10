@@ -152,7 +152,11 @@ function showOverlay(msg, type = 'info') {
     document.body.appendChild(el);
   }
   const color = type==='error'?'#f44336':type==='ok'?'#4caf50':'#c0a060';
-  el.innerHTML = `<div style="background:#1a1a2e;border:2px solid ${color};border-radius:8px;padding:24px 36px;text-align:center;color:${color};font-size:15px;font-weight:bold">${msg}</div>`;
+  el.textContent = '';
+  const inner = document.createElement('div');
+  inner.style.cssText = `background:#1a1a2e;border:2px solid ${color};border-radius:8px;padding:24px 36px;text-align:center;color:${color};font-size:15px;font-weight:bold`;
+  inner.textContent = msg;
+  el.appendChild(inner);
 }
 
 // ── Clique de grupo ──────────────────────────────────────────────────────────
@@ -291,17 +295,37 @@ async function checkTroopConfirmation() {
   if (!data.pendingTroopConfirm) return;
   if (document.getElementById('eos-troop-confirm')) return;
 
-  const groupName = data.pendingTroopConfirmGroupName || 'Todos';
+  const groupName = (data.pendingTroopConfirmGroupName || 'Todos').replace(/[<>"'&]/g, '');
   const bar = document.createElement('div');
   bar.id = 'eos-troop-confirm';
   bar.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:linear-gradient(135deg,#1a1008,#100c08);border:1px solid #3a2810;border-left:3px solid #e87830;border-radius:8px;padding:14px 18px;font-family:Segoe UI,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.8);max-width:320px';
-  bar.innerHTML = `
-    <div style="color:#e8a030;font-weight:700;font-size:13px;margin-bottom:6px">⚔️ Pedido de tropas</div>
-    <div style="color:#b09070;font-size:12px;margin-bottom:12px">A liderança pede a atualização das tuas tropas <strong style="color:#e8a030">(${groupName})</strong></div>
-    <div style="display:flex;gap:8px">
-      <button id="eos-confirm-accept" style="flex:1;padding:7px 0;background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer">Aceitar</button>
-      <button id="eos-confirm-refuse" style="flex:1;padding:7px 0;background:#1a1210;color:#807060;border:1px solid #3a2a1a;border-radius:5px;font-size:12px;cursor:pointer">Recusar</button>
-    </div>`;
+
+  const title = document.createElement('div');
+  title.style.cssText = 'color:#e8a030;font-weight:700;font-size:13px;margin-bottom:6px';
+  title.textContent = '⚔️ Pedido de tropas';
+
+  const desc = document.createElement('div');
+  desc.style.cssText = 'color:#b09070;font-size:12px;margin-bottom:12px';
+  desc.textContent = `A liderança pede a atualização das tuas tropas (${groupName})`;
+
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px';
+
+  const acceptBtn = document.createElement('button');
+  acceptBtn.id = 'eos-confirm-accept';
+  acceptBtn.style.cssText = 'flex:1;padding:7px 0;background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer';
+  acceptBtn.textContent = 'Aceitar';
+
+  const refuseBtn = document.createElement('button');
+  refuseBtn.id = 'eos-confirm-refuse';
+  refuseBtn.style.cssText = 'flex:1;padding:7px 0;background:#1a1210;color:#807060;border:1px solid #3a2a1a;border-radius:5px;font-size:12px;cursor:pointer';
+  refuseBtn.textContent = 'Recusar';
+
+  btns.appendChild(acceptBtn);
+  btns.appendChild(refuseBtn);
+  bar.appendChild(title);
+  bar.appendChild(desc);
+  bar.appendChild(btns);
   document.body.appendChild(bar);
 
   document.getElementById('eos-confirm-accept').addEventListener('click', async () => {
