@@ -444,36 +444,38 @@ if (document.readyState === 'loading') {
 window.addEventListener('message', (event) => {
   if (!event.data) return;
 
-  // Mensagens do iframe do painel EOS
-  if (event.data.type === 'EOS_SYNC_SCHEDULES') {
-    getStorage('eosToken').then(({ eosToken }) => {
-      if (eosToken) chrome.runtime.sendMessage({ type: 'SYNC_SCHEDULES', token: eosToken });
-    });
-    return;
-  }
+  // Mensagens do iframe do painel EOS — validar origem
+  const iframeOrigin = EOS_SERVER.replace(/\/$/, '');
+  if (event.origin === iframeOrigin) {
+    if (event.data.type === 'EOS_SYNC_SCHEDULES') {
+      getStorage('eosToken').then(({ eosToken }) => {
+        if (eosToken) chrome.runtime.sendMessage({ type: 'SYNC_SCHEDULES', token: eosToken });
+      });
+      return;
+    }
 
-  if (event.data.type === 'EOS_EXTRACT_GROUPS_REQUEST') {
-    const world = window.location.hostname.split('.')[0];
-    const url = `https://${world}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;
-    chrome.storage.local.set({ pendingGroupsExtract: true });
-    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
-    return;
-  }
-
-  if (event.data.type === 'EOS_FORCE_REPORT') {
-    getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
-      if (!eosToken || !eosWorld) return;
-      const groupId   = event.data.groupId   || '0';
-      const groupName = event.data.groupName || 'Todos';
-      chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
-      const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`;
+    if (event.data.type === 'EOS_EXTRACT_GROUPS_REQUEST') {
+      const world = window.location.hostname.split('.')[0];
+      const url = `https://${world}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;
+      chrome.storage.local.set({ pendingGroupsExtract: true });
       chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
-    });
-    return;
+      return;
+    }
+
+    if (event.data.type === 'EOS_FORCE_REPORT') {
+      getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
+        if (!eosToken || !eosWorld) return;
+        const groupId   = event.data.groupId   || '0';
+        const groupName = event.data.groupName || 'Todos';
+        chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
+        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`;
+        chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
+      });
+      return;
+    }
   }
 
-
-
+  // Mensagens do page_reader (mesmo window)
   if (event.source !== window) return;
 
   if (event.data.type === 'EOS_GAME_DATA') {

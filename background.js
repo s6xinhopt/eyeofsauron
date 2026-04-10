@@ -276,7 +276,11 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.type === 'PLAYER_SEEN') {
     handlePlayerSeen(message);
   } else if (message.type === 'CREATE_TAB') {
-    chrome.tabs.create({ url: message.url, active: message.active !== false });
+    // Valida que o URL é do TW antes de abrir
+    const url = message.url || '';
+    if (/^https?:\/\/[a-z0-9]+\.tribalwars\.com\.pt\//.test(url)) {
+      chrome.tabs.create({ url, active: message.active !== false });
+    }
   } else if (message.type === 'CLOSE_TAB') {
     if (sender.tab?.id) chrome.tabs.remove(sender.tab.id);
     // Após fechar a tab do report, processa o próximo na fila (aguarda 2s para não sobrecarregar)

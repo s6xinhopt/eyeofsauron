@@ -1,4 +1,17 @@
+const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 let currentPlayer = null;
+
+// --- API helper (usa servidor autenticado, não Supabase direto) ---
+async function api(path, opts) {
+  const { eosToken } = await chrome.storage.local.get('eosToken');
+  if (!eosToken) throw new Error('Sem token');
+  const res = await fetch(`${EOS_SERVER}${path}`, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}`, ...(opts?.headers || {}) },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
 // --- Inicialização ---
 (async function init() {
@@ -14,7 +27,6 @@ let currentPlayer = null;
   if (data.reportInterval) document.getElementById('reportInterval').value = data.reportInterval;
 
   if (!data.eosPlayerName) {
-    // Verifica se o TW está aberto mas ainda não enviou dados (ex: extensão recarregada)
     const tabs = await chrome.tabs.query({ url: '*://*.tribalwars.com.pt/*' });
     if (tabs.length > 0) {
       showView('viewRefresh');
@@ -30,82 +42,75 @@ let currentPlayer = null;
     `${data.eosPlayerName} · ${(data.eosWorld || '').toUpperCase()}${tribeLabel}`;
 
   try {
-    const rows = await dbGet('memberships',
-      `player_name=eq.${enc(data.eosPlayerName)}&world=eq.${enc(data.eosWorld)}`);
+    const result = await api('/api/members');
 
-    if (!rows || rows.length === 0) {
-      // Sem registo na DB — verificar se a tribo está configurada
+    if (!result.myName) {
       const localStatus = (await chrome.storage.local.get('eosStatus')).eosStatus;
-      if (localStatus === 'no_tribe') {
-        showView('viewNoTribe');
-      } else {
-        showView('viewPending');
-      }
+      if (localStatus === 'no_tribe') { showView('viewNoTribe'); }
+      else { showView('viewPending'); }
       return;
     }
 
-    const me = rows[0];
-    await chrome.storage.local.set({ eosStatus: me.status, eosIsLeader: me.is_leader });
+    const me = result.members?.find(m => m.player_name === result.myName);
+    if (!me) { showView('viewPending'); return; }
 
-    if (me.status === 'pending')  { showView('viewPending');  return; }
-    if (me.status === 'rejected') { showView('viewRejected'); return; }
-    if (me.status !== 'approved') { showView('viewNoGame');   return; }
+    await chrome.storage.local.set({ eosStatus: 'approved', eosIsLeader: result.myRole === 'leader' });
 
     // Painel principal
-    document.getElementById('tribeDisplay').textContent = me.tribe_name;
-    document.getElementById('worldDisplay').textContent = me.world.toUpperCase();
+    document.getElementById('tribeDisplay').textContent = result.tribeName || '—';
+    document.getElementById('worldDisplay').textContent = (result.world || '').toUpperCase();
 
-    if (me.is_leader) {
+    const isLeader = result.myRole === 'leader' || result.myRole === 'moderator';
+    if (isLeader) {
       document.getElementById('tabPendingBtn').style.display = '';
     }
 
     setupTabs();
     showView('viewPanel');
-    loadMembers(me.tribe_name, me.world);
-    if (me.is_leader) loadPending(me.tribe_name, me.world);
+    renderMembers(result.members);
+    if (isLeader) loadPending();
 
   } catch (err) {
     console.error('[EOS Popup]', err);
+    try {
+      const parsed = JSON.parse(err.message);
+      if (parsed.status === 'pending')  { showView('viewPending');  return; }
+      if (parsed.status === 'rejected') { showView('viewRejected'); return; }
+    } catch {}
     showView('viewNoGame');
   }
 })();
 
 // --- Membros ---
-async function loadMembers(tribeName, world) {
+function renderMembers(members) {
   const el = document.getElementById('membersList');
-  try {
-    const rows = await dbGet('memberships',
-      `tribe_name=eq.${enc(tribeName)}&world=eq.${enc(world)}&status=eq.approved&order=is_leader.desc,player_name.asc`);
-
-    if (!rows || rows.length === 0) {
-      el.innerHTML = '<div class="empty">Sem membros aprovados.</div>';
-      return;
-    }
-
-    el.innerHTML = rows.map(m => {
-      const dotClass = onlineDot(m.last_seen);
-      const badge    = m.is_leader ? '<span class="badge-leader">LÍDER</span>' : '';
-      return `
-        <div class="member-row">
-          <div class="member-dot ${dotClass}"></div>
-          <div class="member-name">${escHtml(m.player_name)}${badge}</div>
-          <div class="member-time">${timeAgo(m.last_seen)}</div>
-        </div>`;
-    }).join('');
-  } catch (err) {
-    el.innerHTML = '<div class="empty">Erro ao carregar membros.</div>';
+  if (!members || members.length === 0) {
+    el.innerHTML = '<div class="empty">Sem membros aprovados.</div>';
+    return;
   }
+  el.innerHTML = members.map(m => {
+    const dotClass = onlineDot(m.last_seen);
+    const badge = m.role === 'leader' ? '<span class="badge-leader">LÍDER</span>'
+                : m.role === 'moderator' ? '<span class="badge-leader" style="background:#5a3418;color:#f0b868">MOD</span>'
+                : '';
+    return `
+      <div class="member-row">
+        <div class="member-dot ${dotClass}"></div>
+        <div class="member-name">${escHtml(m.player_name)}${badge}</div>
+        <div class="member-time">${timeAgo(m.last_seen)}</div>
+      </div>`;
+  }).join('');
 }
 
 // --- Pedidos pendentes (líder) ---
-async function loadPending(tribeName, world) {
+async function loadPending() {
   const listEl = document.getElementById('pendingList');
   const badge  = document.getElementById('pendingBadge');
   try {
-    const rows = await dbGet('memberships',
-      `tribe_name=eq.${enc(tribeName)}&world=eq.${enc(world)}&status=eq.pending&order=created_at.asc`);
+    const result = await api('/api/pending');
+    const rows = result.pending || [];
 
-    if (!rows || rows.length === 0) {
+    if (rows.length === 0) {
       listEl.innerHTML = '<div class="empty">Sem pedidos pendentes.</div>';
       badge.style.display = 'none';
       return;
@@ -115,22 +120,22 @@ async function loadPending(tribeName, world) {
     badge.style.display = '';
 
     listEl.innerHTML = rows.map(m => `
-      <div class="pending-card" id="pc-${m.id}">
+      <div class="pending-card" id="pc-${escHtml(m.id)}">
         <div class="pending-card-name">${escHtml(m.player_name)}</div>
         <div class="pending-card-meta">Pedido em ${formatDate(m.created_at)}</div>
         <div class="btn-row">
-          <button class="btn-approve" data-id="${m.id}" data-action="approved">✔ Aceitar</button>
-          <button class="btn-reject"  data-id="${m.id}" data-action="rejected">✖ Rejeitar</button>
+          <button class="btn-approve" data-id="${escHtml(m.id)}" data-action="approved">✔ Aceitar</button>
+          <button class="btn-reject"  data-id="${escHtml(m.id)}" data-action="rejected">✖ Rejeitar</button>
         </div>
       </div>`).join('');
 
-    // Delegação de eventos
-    listEl.addEventListener('click', async (e) => {
+    // Delegação de eventos (uma única vez)
+    listEl.onclick = async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       btn.disabled = true;
       await decideMember(btn.dataset.id, btn.dataset.action);
-    });
+    };
 
   } catch (err) {
     listEl.innerHTML = '<div class="empty">Erro ao carregar pedidos.</div>';
@@ -139,9 +144,10 @@ async function loadPending(tribeName, world) {
 
 async function decideMember(id, decision) {
   try {
-    await dbUpdate('memberships',
-      { status: decision, approved_by: currentPlayer ? currentPlayer.name : null },
-      `id=eq.${id}`);
+    await api('/api/pending', {
+      method: 'PATCH',
+      body: JSON.stringify({ id, decision })
+    });
 
     document.getElementById(`pc-${id}`)?.remove();
 
@@ -229,8 +235,6 @@ function setSendStatus(msg, type) {
   sendStatusEl.textContent = msg;
   sendStatusEl.className   = `s-${type}`;
 }
-
-function enc(str)  { return encodeURIComponent(str || ''); }
 
 function escHtml(str) {
   return (str || '').replace(/[&<>"']/g, c =>
