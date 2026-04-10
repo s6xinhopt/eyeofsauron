@@ -385,8 +385,19 @@ async function main() {
   // Passo 2: clica em [todos] da paginação para ver todas as aldeias
   const pagClicked = sessionStorage.getItem('eos_pagination_clicked') === '1';
   if (!pagClicked) {
-    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
-      .find(a => /todos/i.test(a.textContent.trim()));
+    // Espera que a paginação apareça (pode não estar no DOM imediatamente)
+    const pagTodos = await new Promise(resolve => {
+      const find = () => Array.from(document.querySelectorAll('a.paged-nav-item'))
+        .find(a => /todos/i.test(a.textContent.trim())) || null;
+      const el = find();
+      if (el) return resolve(el);
+      let attempts = 0;
+      const check = setInterval(() => {
+        const el = find();
+        if (el) { clearInterval(check); resolve(el); }
+        else if (++attempts > 8) { clearInterval(check); resolve(null); } // 8 * 300ms = 2.4s
+      }, 300);
+    });
     if (pagTodos) {
       showOverlay('⚔️ A carregar todas as páginas...');
       sessionStorage.setItem('eos_pagination_clicked', '1');
