@@ -108,8 +108,8 @@ function waitForTable() {
     const observer = new MutationObserver(() => {
       if (ready()) { observer.disconnect(); resolve(); }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout')); }, 15000);
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout')); }, 8000);
   });
 }
 
@@ -381,28 +381,28 @@ async function main() {
 async function handleTroopReport(groupId, groupName, token) {
   // Passo 1: selecionar grupo (skip se "Todos" ou já selecionado)
   if (groupId !== '0' && !isGroupAlreadySelected(groupId)) {
-    const alreadyClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
-    if (!alreadyClicked) {
-      // Tenta encontrar o link do grupo imediatamente (sem esperar)
+    if (sessionStorage.getItem('eos_group_clicked') !== groupId) {
       const el = findGroupElement(groupId);
       if (el) {
         sessionStorage.setItem('eos_group_clicked', groupId);
         el.click(); return;
       }
-      // Fallback: espera até 3s
+      // Elemento não encontrado ainda — espera brevemente
       const elWait = await waitForGroupElement(groupId);
       if (elWait) {
         sessionStorage.setItem('eos_group_clicked', groupId);
         elWait.click(); return;
       }
+      // Grupo não encontrado — avança mesmo assim
     }
   }
   sessionStorage.removeItem('eos_group_clicked');
 
-  // Passo 2: paginação — clica em [todos] se existir (skip se já clicou)
+  // Passo 2: paginação — clica em [todos] se existir e se ainda não clicou
+  // Verifica se a paginação existe primeiro; se não existe, não há delay
   if (sessionStorage.getItem('eos_pagination_clicked') !== '1') {
-    const pagTodos = Array.from(document.querySelectorAll('a.paged-nav-item'))
-      .find(a => /todos/i.test(a.textContent.trim()));
+    const pagTodos = document.querySelector('a.paged-nav-item[href*="page=-1"]')
+      || Array.from(document.querySelectorAll('a.paged-nav-item')).find(a => /todos/i.test(a.textContent.trim()));
     if (pagTodos) {
       sessionStorage.setItem('eos_pagination_clicked', '1');
       pagTodos.click(); return;
@@ -417,30 +417,36 @@ async function handleTroopReport(groupId, groupName, token) {
     if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
     const classification = classifyVillages();
 
-    const res = await fetch(`${EOS_SERVER}/api/report`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ troops, classification, groupId, groupName })
-    });
+    // Envio em paralelo: limpa flag + envia para servidor
+    const [res] = await Promise.all([
+      fetch(`${EOS_SERVER}/api/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ troops, classification, groupId, groupName })
+      }),
+      chrome.storage.local.set({ pendingTroopRequest: false })
+    ]);
 
     if (!res.ok) throw new Error(`Servidor: ${res.status}`);
 
-    await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('✔ Tropas guardadas!', 'ok');
-    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
+    // Fecha tab imediatamente — não precisa de esperar
+    chrome.runtime.sendMessage({ type: 'CLOSE_TAB' });
 
   } catch (err) {
     await chrome.storage.local.set({ pendingTroopRequest: false });
     showOverlay('❌ ' + err.message, 'error');
-    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
+    setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 2000);
   }
 }
 
-// Arranca logo no DOMContentLoaded sem esperar recursos externos
+// Arranca o mais cedo possível
+function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); }
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => { main(); waitForQuestlog(); checkTroopConfirmation(); });
+  // DOMContentLoaded é suficiente — não esperar por load (imagens/css)
+  document.addEventListener('DOMContentLoaded', boot, { once: true });
 } else {
-  main(); waitForQuestlog(); checkTroopConfirmation();
+  boot();
 }
 
 // ── Recebe dados do page_reader (MAIN world) ─────────────────────────────────
