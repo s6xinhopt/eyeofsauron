@@ -5,9 +5,6 @@
     const gd = window.game_data;
     const playerName = gd.player && gd.player.name ? gd.player.name : null;
 
-    console.log('[EOS] game_data.player:', JSON.stringify(gd.player));
-    console.log('[EOS] game_data.ally:', JSON.stringify(gd.ally));
-
     if (playerName) {
       // Tenta obter o nome COMPLETO da tribo de várias fontes
       // ally.name é o tag/abreviatura (ex: "NT"); ally.full_name é o nome completo
@@ -22,8 +19,6 @@
 
       const allyId = (gd.player && gd.player.ally) ? String(gd.player.ally) : '0';
       const hasTribe = allyId !== '0' && allyId !== '';
-
-      console.log('[EOS] tribeName:', tribeName, 'allyId:', allyId, 'hasTribe:', hasTribe);
 
       window.postMessage({
         type:       'EOS_GAME_DATA',
@@ -49,7 +44,6 @@
       if (name) groups.push({ id, name });
     }
     if (groups.length > 0) {
-      console.log('[EOS] window.Groups:', groups.length, 'grupos');
       window.postMessage({ type: 'EOS_GROUPS_DATA', groups }, '*');
     }
   }

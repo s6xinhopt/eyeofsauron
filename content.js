@@ -157,11 +157,15 @@ function showOverlay(msg, type = 'info') {
 
 // ── Clique de grupo ──────────────────────────────────────────────────────────
 
+let _groupsContainerCache = null;
 function findGroupsContainer() {
-  // Procura o elemento que contém directamente o texto "Grupos:" (TW PT)
-  for (const el of document.querySelectorAll('div, td, span, p')) {
+  if (_groupsContainerCache && _groupsContainerCache.isConnected) return _groupsContainerCache;
+  // Seletores específicos primeiro (rápidos), fallback genérico limitado ao #content_value
+  const scope = document.getElementById('content_value') || document;
+  for (const el of scope.querySelectorAll('td, div')) {
     for (const node of el.childNodes) {
       if (node.nodeType === Node.TEXT_NODE && /grupos:/i.test(node.textContent)) {
+        _groupsContainerCache = el;
         return el;
       }
     }
@@ -193,26 +197,18 @@ function isGroupAlreadySelected(groupId) {
 }
 
 function findGroupElement(groupId) {
-  const scope = findGroupsContainer() || document;
+  const scope = findGroupsContainer() || document.getElementById('content_value') || document;
 
   if (groupId === '0') {
-    // Na página de mass support o grupo "Todos" pode ser um link sem group= ou com group=0
     return scope.querySelector('a[href*="group=0"]')
-        || Array.from(scope.querySelectorAll('a')).find(a => {
-             const h = a.getAttribute('href') || '';
-             return (h.includes('mode=call') || h.includes('mode=units')) && !h.includes('group=');
-           })
+        || scope.querySelector('a[href*="mode=call"]:not([href*="group="])')
+        || scope.querySelector('a[href*="mode=units"]:not([href*="group="])')
         || null;
   }
 
   return scope.querySelector(`a[href*="group=${groupId}"]`)
       || scope.querySelector(`a[data-group-id="${groupId}"]`)
-      || (() => {
-           for (const el of scope.querySelectorAll('[onclick]')) {
-             if ((el.getAttribute('onclick') || '').includes(groupId)) return el;
-           }
-           return null;
-         })();
+      || null;
 }
 
 function waitForGroupElement(groupId) {
@@ -285,8 +281,15 @@ function injectEOSButton() {
 
 function waitForQuestlog() {
   const el = document.getElementById('questlog_new');
-  if (el) injectEOSButton();
-  else setTimeout(waitForQuestlog, 300);
+  if (el) { injectEOSButton(); return; }
+  // Usa MutationObserver em vez de polling recursivo, com timeout de 10s
+  const obs = new MutationObserver(() => {
+    const el = document.getElementById('questlog_new');
+    if (el) { obs.disconnect(); injectEOSButton(); }
+  });
+  const target = document.body || document.documentElement;
+  if (target) obs.observe(target, { childList: true, subtree: true });
+  setTimeout(() => obs.disconnect(), 10000);
 }
 
 // ── Ponto de entrada ─────────────────────────────────────────────────────────
