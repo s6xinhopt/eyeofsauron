@@ -204,12 +204,13 @@ function waitForGroupElement(groupId) {
   return new Promise(resolve => {
     const el = findGroupElement(groupId);
     if (el) return resolve(el);
-    const observer = new MutationObserver(() => {
+    // Polling leve em vez de MutationObserver (findGroupElement é pesado para correr a cada mutação)
+    let attempts = 0;
+    const check = setInterval(() => {
       const el = findGroupElement(groupId);
-      if (el) { observer.disconnect(); resolve(el); }
-    });
-    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-    setTimeout(() => { observer.disconnect(); resolve(null); }, 6000);
+      if (el) { clearInterval(check); resolve(el); }
+      else if (++attempts > 15) { clearInterval(check); resolve(null); } // 15 * 400ms = 6s
+    }, 400);
   });
 }
 
