@@ -301,3 +301,57 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     if (message.token) syncSchedules(message.token);
   }
 });
+
+// ── Auto-update checker ─────────────────────────────────────────────────────
+
+async function checkForUpdate() {
+  try {
+    const manifest = chrome.runtime.getManifest();
+    const currentVersion = manifest.version;
+
+    const res = await fetch(`${EOS_SERVER}/api/version`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (!data.version || data.version === currentVersion) return;
+
+    // Compara versões (ex: "2.1.0" > "2.0.0")
+    const current = currentVersion.split('.').map(Number);
+    const latest = data.version.split('.').map(Number);
+    let isNewer = false;
+    for (let i = 0; i < 3; i++) {
+      if ((latest[i] || 0) > (current[i] || 0)) { isNewer = true; break; }
+      if ((latest[i] || 0) < (current[i] || 0)) break;
+    }
+    if (!isNewer) return;
+
+    // Guarda info do update
+    await chrome.storage.local.set({
+      eosUpdateAvailable: true,
+      eosUpdateVersion: data.version,
+      eosUpdateUrl: data.downloadUrl,
+      eosUpdateChangelog: data.changelog,
+      eosUpdateMandatory: data.mandatory || false,
+    });
+
+    // Badge no ícone da extensão
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#e87830' });
+
+    console.log(`[EOS] Update disponível: ${currentVersion} → ${data.version}`);
+  } catch (_) {}
+}
+
+// Verifica updates a cada 6 horas
+chrome.alarms.create('check-update', { periodInMinutes: 360 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'check-update') checkForUpdate();
+});
+
+// Verifica logo ao iniciar
+chrome.runtime.onInstalled.addListener(() => {
+  setTimeout(checkForUpdate, 10000);
+});
+chrome.runtime.onStartup.addListener(() => {
+  setTimeout(checkForUpdate, 15000);
+});

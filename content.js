@@ -1194,7 +1194,54 @@ function fmtK(n) {
   return String(n);
 }
 
-function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); }
+async function checkUpdateNotification() {
+  const { eosUpdateAvailable, eosUpdateVersion, eosUpdateUrl, eosUpdateChangelog } = await getStorage(
+    'eosUpdateAvailable', 'eosUpdateVersion', 'eosUpdateUrl', 'eosUpdateChangelog'
+  );
+  if (!eosUpdateAvailable || !eosUpdateVersion) return;
+  if (document.getElementById('eos-update-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'eos-update-banner';
+  banner.style.cssText = 'position:fixed;bottom:16px;left:16px;z-index:2147483647;background:linear-gradient(135deg,#2a1808,#1a1008);border:1px solid #e8783040;border-left:3px solid #e87830;border-radius:8px;padding:12px 16px;font-family:Segoe UI,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.8);max-width:340px';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'color:#f8c850;font-weight:700;font-size:13px;margin-bottom:4px';
+  title.textContent = `🔄 Eye of Sauron v${eosUpdateVersion}`;
+
+  const desc = document.createElement('div');
+  desc.style.cssText = 'color:#b09878;font-size:11px;margin-bottom:10px;line-height:1.4';
+  desc.textContent = eosUpdateChangelog || 'Nova versão disponível!';
+
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px';
+
+  const downloadBtn = document.createElement('button');
+  downloadBtn.style.cssText = 'flex:1;padding:7px 0;background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer';
+  downloadBtn.textContent = 'Atualizar';
+  downloadBtn.addEventListener('click', () => {
+    if (eosUpdateUrl) window.open(eosUpdateUrl, '_blank');
+    chrome.storage.local.set({ eosUpdateAvailable: false });
+    banner.remove();
+  });
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.style.cssText = 'padding:7px 12px;background:transparent;color:#807060;border:1px solid #3a2a1a;border-radius:5px;font-size:12px;cursor:pointer';
+  dismissBtn.textContent = 'Depois';
+  dismissBtn.addEventListener('click', () => {
+    banner.remove();
+    // Não limpa eosUpdateAvailable — volta a aparecer na próxima página
+  });
+
+  btns.appendChild(downloadBtn);
+  btns.appendChild(dismissBtn);
+  banner.appendChild(title);
+  banner.appendChild(desc);
+  banner.appendChild(btns);
+  document.body.appendChild(banner);
+}
+
+function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); }
 if (document.readyState === 'loading') {
   // DOMContentLoaded é suficiente — não esperar por load (imagens/css)
   document.addEventListener('DOMContentLoaded', boot, { once: true });
