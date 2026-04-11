@@ -309,13 +309,28 @@ async function checkForUpdate() {
     const manifest = chrome.runtime.getManifest();
     const currentVersion = manifest.version;
 
-    const res = await fetch(`${EOS_SERVER}/api/version`);
+    const res = await fetch(`${EOS_SERVER}/api/version?v=${currentVersion}`);
     if (!res.ok) return;
     const data = await res.json();
 
+    // Versão desatualizada (obrigatório atualizar)
+    if (data.outdated) {
+      await chrome.storage.local.set({
+        eosOutdated: true,
+        eosUpdateVersion: data.version,
+        eosUpdateUrl: data.downloadUrl,
+      });
+      chrome.action.setBadgeText({ text: '⚠' });
+      chrome.action.setBadgeBackgroundColor({ color: '#e05050' });
+      console.log(`[EOS] Versão desatualizada! ${currentVersion} < ${data.minVersion}`);
+      return;
+    }
+
+    await chrome.storage.local.set({ eosOutdated: false });
+
     if (!data.version || data.version === currentVersion) return;
 
-    // Compara versões (ex: "2.1.0" > "2.0.0")
+    // Compara versões
     const current = currentVersion.split('.').map(Number);
     const latest = data.version.split('.').map(Number);
     let isNewer = false;
@@ -331,7 +346,6 @@ async function checkForUpdate() {
       eosUpdateVersion: data.version,
       eosUpdateUrl: data.downloadUrl,
       eosUpdateChangelog: data.changelog,
-      eosUpdateMandatory: data.mandatory || false,
     });
 
     // Badge no ícone da extensão

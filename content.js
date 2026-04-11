@@ -368,6 +368,13 @@ function injectEOSButton() {
     // Nome da tribo: apenas do storage (guardado pelo page_reader → background)
     const tribe = eosTribeName || '';
 
+    // Verifica versão obrigatória
+    const { eosOutdated, eosUpdateVersion, eosUpdateUrl } = await getStorage('eosOutdated', 'eosUpdateVersion', 'eosUpdateUrl');
+    if (eosOutdated) {
+      showUpdateRequiredOverlay(eosUpdateVersion || '', eosUpdateUrl || '');
+      return;
+    }
+
     // Verifica subscrição
     const sub = eosSubscription || {};
     if (!sub.active) {
@@ -644,6 +651,40 @@ async function main() {
 
 // Arranca o mais cedo possível
 // ── Overlay do mapa: escudos em aldeias bunkadas + tooltip ──────────────────
+
+function showUpdateRequiredOverlay(version, downloadUrl) {
+  const existing = document.getElementById('eos-update-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'eos-update-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif';
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:12px;padding:30px 36px;max-width:420px;text-align:center;color:#f0e0c8;box-shadow:0 12px 48px rgba(0,0,0,0.9)';
+
+  panel.innerHTML = `
+    <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+    <h2 style="font-size:18px;color:#f8c850;margin:0 0 12px;font-weight:700">Atualização Obrigatória</h2>
+    <p style="font-size:13px;color:#c0b090;line-height:1.6;margin:0 0 20px">
+      A tua versão do Eye of Sauron está desatualizada.<br>
+      Faz download da versão <strong style="color:#f8c850">v${version}</strong> para continuar a usar.
+    </p>
+    <button id="eos-download-update-btn" style="padding:12px 28px;background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px #e8502040">
+      Descarregar Atualização
+    </button>
+    <div style="margin-top:12px;font-size:10px;color:#706050">
+      Após descarregar, extrai e substitui os ficheiros da extensão.
+    </div>
+  `;
+
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  panel.querySelector('#eos-download-update-btn')?.addEventListener('click', () => {
+    if (downloadUrl) window.open(downloadUrl, '_blank');
+  });
+}
 
 function showSubscriptionOverlay(sub, tribeName) {
   const existing = document.getElementById('eos-sub-overlay');
