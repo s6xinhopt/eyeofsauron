@@ -659,9 +659,11 @@ const DEFAULT_BUNK_TYPES = [
 ];
 let bunkTypes = [...DEFAULT_BUNK_TYPES];
 
-function makeShieldSvg(color) {
-  // Escudo medieval com borda dourada, gradiente, e brilho
-  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 36"><defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}"/><stop offset="100%" stop-color="${color}" stop-opacity=".6"/></linearGradient><linearGradient id="sh" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity=".45"><animate attributeName="offset" values="-0.5;1.5" dur="2s" repeatCount="indefinite"/></stop><stop offset="12%" stop-color="white" stop-opacity="0"><animate attributeName="offset" values="-0.3;1.7" dur="2s" repeatCount="indefinite"/></stop></linearGradient><filter id="ds"><feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#000" flood-opacity=".6"/></filter></defs><g filter="url(#ds)"><path d="M16 1C10 1 3 4 3 4v12c0 8 5.5 15 13 18 7.5-3 13-10 13-18V4S22 1 16 1z" fill="url(#bg)" stroke="#c8a050" stroke-width="1.5"/><path d="M16 3C11 3 5 5.5 5 5.5v10.5c0 7 4.8 13 11 15.8 6.2-2.8 11-8.8 11-15.8V5.5S21 3 16 3z" fill="none" stroke="white" stroke-width=".4" opacity=".25"/><path d="M16 1C10 1 3 4 3 4v12c0 8 5.5 15 13 18 7.5-3 13-10 13-18V4S22 1 16 1z" fill="url(#sh)"/><path d="M11 17l3.5 3.5 6.5-7" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/></g></svg>`)}`;
+function makeShieldElement(color) {
+  const el = document.createElement('div');
+  el.textContent = '🛡️';
+  el.style.cssText = `font-size:12px;line-height:16px;width:16px;height:16px;text-align:center;border-radius:3px;background:${color};box-shadow:0 1px 3px rgba(0,0,0,.5)`;
+  return el;
 }
 
 function classifyVillageForMap(troopsTotal) {
@@ -960,13 +962,12 @@ function placeShields() {
     const top = parseInt(domVillage.style.top, 10) || 0;
     const left = parseInt(domVillage.style.left, 10) || 0;
 
-    const shield = document.createElement('img');
-    shield.src = makeShieldSvg(bt.color);
+    const shield = makeShieldElement(bt.color);
     shield.dataset.eosShield = coordKey;
     shield.title = bt.name + ' (' + coordKey + ')';
     shield.className = 'eos-shield-icon';
     const delay = (Math.random() * 2).toFixed(1);
-    shield.style.cssText = `position:absolute;width:20px;height:22px;pointer-events:none;z-index:20;left:${left + 17}px;top:${top - 8}px;animation-delay:${delay}s`;
+    shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 19}px;top:${top - 6}px;animation-delay:${delay}s`;
     domVillage.parentNode.insertBefore(shield, domVillage);
   }
 }
