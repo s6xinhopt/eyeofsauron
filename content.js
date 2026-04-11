@@ -874,7 +874,13 @@ async function initMapOverlay() {
   if (!isMapPage()) return;
   injectShieldStyles();
 
-  const { token: eosToken } = await getWorldStorage('token');
+  // Tenta obter o token; se ainda não existe (migração pendente), retry até 10s
+  let eosToken = null;
+  for (let i = 0; i < 10; i++) {
+    const { token } = await getWorldStorage('token');
+    if (token) { eosToken = token; break; }
+    await new Promise(r => setTimeout(r, 1000));
+  }
   if (!eosToken) return;
 
   // Carrega definições guardadas
