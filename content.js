@@ -697,26 +697,24 @@ async function fetchMapData(token) {
 }
 
 function placeShields() {
-  if (!mapVillageData) return;
+  if (!mapVillageData || !mapCenterX || !mapCenterY) return;
 
   const mapEl = document.getElementById('map');
-  const container = document.getElementById('map_container');
-  if (!mapEl || !container) return;
+  if (!mapEl) return;
 
   const fieldW = 53;
   const fieldH = 38;
+  const mapW = mapEl.offsetWidth;
+  const mapH = mapEl.offsetHeight;
+  const halfW = mapW / 2;
+  const halfH = mapH / 2;
 
-  // Cria overlay dentro de #map (viewport fixo, visível)
   if (!mapOverlayEl) {
     mapOverlayEl = document.createElement('div');
     mapOverlayEl.id = 'eos-map-shield-overlay';
     mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99999;overflow:hidden';
     mapEl.appendChild(mapOverlayEl);
   }
-
-  // Lê offset do container para calcular posições relativas ao viewport
-  const containerLeft = parseFloat(container.style.left) || 0;
-  const containerTop = parseFloat(container.style.top) || 0;
 
   for (const [coords, v] of mapVillageData) {
     const t = v.troops_total || {};
@@ -729,12 +727,15 @@ function placeShields() {
     const [vx, vy] = coords.split('|').map(Number);
     if (isNaN(vx) || isNaN(vy)) continue;
 
-    // Posição absoluta do tile no mapa
-    const absX = vx * fieldW;
-    const absY = vy * fieldH;
-    // Posição relativa ao viewport #map
-    const px = absX + containerLeft + fieldW / 2 - 9;
-    const py = absY + containerTop + fieldH / 2 - 9;
+    // Posição relativa ao centro do viewport
+    const px = (vx - mapCenterX) * fieldW + halfW - 9;
+    const py = (vy - mapCenterY) * fieldH + halfH - 9;
+
+    // Fora do viewport
+    if (px < -20 || py < -20 || px > mapW + 20 || py > mapH + 20) {
+      if (shieldElements[coords]) shieldElements[coords].style.display = 'none';
+      continue;
+    }
 
     if (!shieldElements[coords]) {
       const el = document.createElement('img');
@@ -749,21 +750,43 @@ function placeShields() {
   }
 }
 
-// Atualiza posições dos escudos quando o mapa se move
-function startShieldTracking() {
-  const container = document.getElementById('map_container');
-  if (!container || !mapVillageData) return;
+// Tracking do centro do mapa via page_reader ou polling do container
+let mapCenterX = 0, mapCenterY = 0;
 
-  let lastLeft = '', lastTop = '';
-  setInterval(() => {
-    const l = container.style.left;
-    const t = container.style.top;
-    if (l !== lastLeft || t !== lastTop) {
-      lastLeft = l;
-      lastTop = t;
+function startShieldTracking() {
+  if (!mapVillageData) return;
+
+  // Calcula o centro a partir da posição do container
+  const fieldW = 53;
+  const fieldH = 38;
+
+  function update() {
+    const container = document.getElementById('map_container');
+    const mapEl = document.getElementById('map');
+    if (!container || !mapEl) return;
+
+    const cLeft = parseFloat(container.style.left) || 0;
+    const cTop = parseFloat(container.style.top) || 0;
+    const mapW = mapEl.offsetWidth;
+    const mapH = mapEl.offsetHeight;
+
+    // O centro do viewport em coordenadas do mundo:
+    // O ponto central do #map (mapW/2, mapH/2) corresponde a qual coord?
+    // container.left + coord_x * fieldW = posição no ecrã
+    // Para o centro do mapa: cLeft + centerX * fieldW = mapW/2
+    // centerX = (mapW/2 - cLeft) / fieldW
+    const newCX = Math.round((mapW / 2 - cLeft) / fieldW);
+    const newCY = Math.round((mapH / 2 - cTop) / fieldH);
+
+    if (newCX !== mapCenterX || newCY !== mapCenterY) {
+      mapCenterX = newCX;
+      mapCenterY = newCY;
       placeShields();
     }
-  }, 50);
+  }
+
+  setInterval(update, 50);
+  update();
 }
 
 function handleMapMouseMove(e) {
