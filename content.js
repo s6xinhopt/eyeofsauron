@@ -1088,29 +1088,29 @@ function setupPopupObserver() {
     return Math.floor(h / 24) + 'd';
   }
 
-  // Observa mudanças no popup (TW atualiza o conteúdo quando muda de aldeia)
-  const waitPopup = setInterval(() => {
+  // Observa document.body para apanhar quando o popup aparece/muda
+  let lastPopupCoord = '';
+  const obs = new MutationObserver(() => {
     const popup = document.getElementById('map_popup');
-    if (!popup) return;
-    clearInterval(waitPopup);
+    if (!popup || popup.offsetHeight === 0) return;
 
-    let observing = true;
-    const obs = new MutationObserver(() => {
-      if (!observing) return;
-      // Desliga temporariamente para evitar loop
-      observing = false;
-      const old = popup.querySelector('#' + EOS_TROOP_ROW_ID);
-      if (old) old.remove();
-      setTimeout(() => {
-        injectTroopInfo();
-        observing = true;
-      }, 100);
-    });
-    obs.observe(popup, { childList: true, subtree: true });
+    const th = popup.querySelector('th');
+    if (!th) return;
+    const coordMatch = th.textContent.match(/\((\d+\|\d+)\)/);
+    if (!coordMatch) return;
 
-    // Primeira injeção
-    injectTroopInfo();
-  }, 500);
+    // Só injeta se mudou de aldeia ou ainda não tem a nossa row
+    const coord = coordMatch[1];
+    if (coord === lastPopupCoord && popup.querySelector('#' + EOS_TROOP_ROW_ID)) return;
+    lastPopupCoord = coord;
+
+    // Remove anterior e injeta
+    const old = popup.querySelector('#' + EOS_TROOP_ROW_ID);
+    if (old) old.remove();
+
+    requestAnimationFrame(injectTroopInfo);
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
 }
 
 function fmtK(n) {
