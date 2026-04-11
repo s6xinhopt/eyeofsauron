@@ -983,10 +983,6 @@ function placeShields() {
   let villageIds;
   try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
 
-  // Limpa escudos antigos
-  document.querySelectorAll('.eos-shield-icon').forEach(el => el.remove());
-  shieldElements = {};
-
   // coord → TWMap.villages[id] → #map_village_${id} → posiciona escudo
   for (const [coordKey, bt] of bunkeredMap) {
     const vid = villageIds[coordKey];
@@ -1013,43 +1009,22 @@ function startShieldTracking() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
-  let lastCx = 0, lastCy = 0;
-  let redrawTimer = null;
-  let isMoving = false;
-
-  // Detecta movimento — esconde escudos durante o drag, recria quando estabiliza
-  setInterval(() => {
-    const cx = parseInt(mapEl.getAttribute('data-eos-cx')) || 0;
-    const cy = parseInt(mapEl.getAttribute('data-eos-cy')) || 0;
-    if (cx !== lastCx || cy !== lastCy) {
-      lastCx = cx; lastCy = cy;
-      isMoving = true;
-      // Esconde escudos durante o movimento
-      document.querySelectorAll('[data-eos-shield]').forEach(el => el.style.display = 'none');
-      // Recria quando estabilizar
-      if (redrawTimer) clearTimeout(redrawTimer);
-      redrawTimer = setTimeout(() => {
-        // Verifica se realmente estabilizou (lê 2x com intervalo)
-        const cx1 = mapEl.getAttribute('data-eos-cx');
-        const cy1 = mapEl.getAttribute('data-eos-cy');
-        setTimeout(() => {
-          const cx2 = mapEl.getAttribute('data-eos-cx');
-          const cy2 = mapEl.getAttribute('data-eos-cy');
-          if (cx1 !== cx2 || cy1 !== cy2) return; // Ainda a mover
-          isMoving = false;
-          document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
-          shieldElements = {};
-          placeShields();
-        }, 200);
-      }, 500);
-    }
-  }, 100);
-
   // Primeiro render
   placeShields();
 
-  // Fallback periódico (só se não está a mover)
-  setInterval(() => { if (!isMoving) placeShields(); }, 5000);
+  // Observer: quando o TW adiciona/remove sectors (pan), adiciona escudos nos novos
+  const container = document.getElementById('map_container');
+  if (container) {
+    let debounce = null;
+    const obs = new MutationObserver(() => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(placeShields, 300);
+    });
+    obs.observe(container, { childList: true, subtree: true });
+  }
+
+  // Fallback periódico
+  setInterval(placeShields, 5000);
 }
 
 function handleMapMouseMove(e) {
