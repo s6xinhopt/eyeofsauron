@@ -983,44 +983,62 @@ function placeShields() {
   }
   if (bunkeredMap.size === 0) return;
 
-  // Para cada aldeia bunkada, calcula onde deveria estar no ecrã
-  // e encontra o sector + posição local correspondente
+  // Pixel absoluto de cada aldeia = coord * fieldSize
+  // Cada sector tem style.left/top (posição absoluta no espaço do mapa)
+  // Cada sector cobre sectorW x sectorH pixels
+  // Posição local = (absPixel - sectorPos) snapped ao grid
+
+  const container = document.getElementById('map_container');
+  if (!container) return;
   const [cx, cy] = center;
   const halfW = mapRect.width / 2;
   const halfH = mapRect.height / 2;
 
-  // Percorre sectores no map_container
-  const container = document.getElementById('map_container');
-  if (!container) return;
+  // Pré-processa sectores: guarda posição e dimensão via style (estável)
+  const sectors = [];
+  for (const sec of container.children) {
+    if (sec.tagName !== 'DIV') continue;
+    const sL = parseFloat(sec.style.left) || 0;
+    const sT = parseFloat(sec.style.top) || 0;
+    const sW = parseFloat(sec.style.width) || 0;
+    const sH = parseFloat(sec.style.height) || 0;
+    if (sW > 0 && sH > 0) sectors.push({ el: sec, left: sL, top: sT, width: sW, height: sH });
+  }
+  if (!sectors.length) return;
 
   for (const [coordKey, bt] of bunkeredMap) {
-    if (shieldElements[coordKey]) continue; // Já tem escudo
+    if (shieldElements[coordKey]) continue;
 
     const [vx, vy] = coordKey.split('|').map(Number);
     if (isNaN(vx) || isNaN(vy)) continue;
 
-    // Posição esperada no ecrã (relativa ao #map)
+    // Posição no ecrã (relativa ao #map)
     const screenX = (vx - cx) * fieldW + halfW;
     const screenY = (vy - cy) * fieldH + halfH;
 
     // Fora do viewport?
     if (screenX < -fieldW || screenY < -fieldH || screenX > mapRect.width + fieldW || screenY > mapRect.height + fieldH) continue;
 
-    // Posição absoluta no ecrã
-    const absScreenX = screenX + mapRect.left;
-    const absScreenY = screenY + mapRect.top;
+    // Pixel absoluto no espaço do container
+    // screenX = absPixel + cL - mapScrollX... Não, vou usar approach simples:
+    // A posição absoluta da aldeia no espaço do container é:
+    // absX = screenX - cL (inverte o container offset relativo ao map)
+    // Mas cL é relativo ao #map? Não, cL é o style.left do container.
+    // O #map faz clip do container. O ponto (0,0) do #map corresponde a (-cL, -cT) no espaço do container.
+    // Então: absContainerX = screenX - cL... não funciona.
 
-    // Encontra o sector que contém este ponto
+    // Abordagem directa: pixel absoluto da aldeia = vx * fieldW, vy * fieldH
+    const absX = vx * fieldW;
+    const absY = vy * fieldH;
+
+    // Encontra o sector que contém este pixel
     let targetSector = null;
     let localX = 0, localY = 0;
-    for (const sec of container.children) {
-      if (sec.tagName !== 'DIV') continue;
-      const sr = sec.getBoundingClientRect();
-      if (absScreenX >= sr.left && absScreenX < sr.right && absScreenY >= sr.top && absScreenY < sr.bottom) {
-        targetSector = sec;
-        // Posição local dentro do sector (snapped ao grid)
-        localX = Math.round((absScreenX - sr.left) / fieldW) * fieldW;
-        localY = Math.round((absScreenY - sr.top) / fieldH) * fieldH;
+    for (const sec of sectors) {
+      if (absX >= sec.left && absX < sec.left + sec.width && absY >= sec.top && absY < sec.top + sec.height) {
+        targetSector = sec.el;
+        localX = absX - sec.left;
+        localY = absY - sec.top;
         break;
       }
     }
