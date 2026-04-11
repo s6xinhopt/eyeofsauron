@@ -670,8 +670,42 @@ async function initMapOverlay() {
     updateMapOverlay();
   });
 
-  // Pede ao page_reader para enviar o viewport (pode já ter arrancado)
-  window.postMessage({ type: 'EOS_MAP_REQUEST_VIEWPORT' }, '*');
+  // Injeta bridge do TWMap directamente no MAIN world (não depende do page_reader)
+  const bridgeScript = document.createElement('script');
+  bridgeScript.textContent = `
+    (function() {
+      var attempts = 0;
+      function tryStart() {
+        attempts++;
+        if (window.TWMap && window.TWMap.map && window.TWMap.map.scale && document.getElementById('map')) {
+          var lastState = '';
+          setInterval(function() {
+            try {
+              var pos = window.TWMap.pos || [500,500];
+              var scale = window.TWMap.map.scale || [53,38];
+              var rect = document.getElementById('map').getBoundingClientRect();
+              if (rect.width === 0) return;
+              var state = pos[0]+','+pos[1]+','+Math.round(rect.left)+','+Math.round(rect.top)+','+Math.round(rect.width)+','+Math.round(rect.height);
+              if (state === lastState) return;
+              lastState = state;
+              window.postMessage({
+                type:'EOS_MAP_VIEWPORT',
+                centerX:pos[0],centerY:pos[1],
+                fieldW:scale[0],fieldH:scale[1],
+                canvasLeft:rect.left,canvasTop:rect.top,
+                canvasW:rect.width,canvasH:rect.height
+              },'*');
+            } catch(e){}
+          }, 300);
+        } else if (attempts < 150) {
+          setTimeout(tryStart, 200);
+        }
+      }
+      tryStart();
+    })();
+  `;
+  (document.head || document.documentElement).appendChild(bridgeScript);
+  bridgeScript.remove();
 
   // Tooltip via mousemove no elemento #map
   const waitForMapEl = setInterval(() => {
