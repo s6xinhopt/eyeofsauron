@@ -533,14 +533,32 @@ async function main() {
   try {
     await waitForOverviewTable();
 
-    // Lê tropas agregadas (totais por unidade)
-    const troops = readTroops();
-    const classification = classifyVillages();
-
-    // Lê tropas por aldeia (total + próprias)
+    // Leitura única: tropas por aldeia
     const villages = readPerVillageTroops();
+    if (!villages || !villages.length) throw new Error('Não foi possível ler a tabela de tropas.');
 
-    if (!troops && !villages) throw new Error('Não foi possível ler a tabela de tropas.');
+    // Deriva totais agregados a partir das aldeias
+    const troops = {};
+    for (const unit of TROOP_NAMES) troops[unit] = 0;
+    for (const v of villages) {
+      const src = v.troops_own || v.troops_total || {};
+      for (const unit of TROOP_NAMES) troops[unit] += src[unit] || 0;
+    }
+    for (const unit of TROOP_NAMES) { if (!troops[unit]) delete troops[unit]; }
+    // Classifica aldeias a partir dos dados já lidos
+    const classification = { full_nuke: 0, semi_nuke: 0, full_def: 0, semi_def: 0, noble: 0, other: 0 };
+    for (const v of villages) {
+      const t = v.troops_own || v.troops_total || {};
+      if ((t['snob'] || 0) >= 1) { classification.noble++; continue; }
+      let offPop = 0, defPop = 0;
+      for (const u of OFFENSE_UNITS) offPop += (t[u] || 0) * (POP_COST[u] || 0);
+      for (const u of DEFENSE_UNITS) defPop += (t[u] || 0) * (POP_COST[u] || 0);
+      if      (offPop >= 20000) classification.full_nuke++;
+      else if (offPop >= 15000) classification.semi_nuke++;
+      else if (defPop >= 20000) classification.full_def++;
+      else if (defPop >= 15000) classification.semi_def++;
+      else                      classification.other++;
+    }
 
     // Envia agregado + por aldeia em paralelo
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
