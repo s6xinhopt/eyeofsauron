@@ -996,8 +996,8 @@ function placeShields() {
     const iL = parseFloat(img.style.left) || 0;
     const iT = parseFloat(img.style.top) || 0;
 
-    const vx = Math.round((r.left - mapRect.left) / fieldW + center[0] - mapRect.width / fieldW / 2);
-    const vy = Math.round((r.top - mapRect.top) / fieldH + center[1] - mapRect.height / fieldH / 2);
+    const vx = Math.floor((r.left - mapRect.left + fieldW * 0.4) / fieldW + center[0] - mapRect.width / fieldW / 2);
+    const vy = Math.floor((r.top - mapRect.top + fieldH * 0.4) / fieldH + center[1] - mapRect.height / fieldH / 2);
     const coordKey = vx + '|' + vy;
 
     const bt = bunkeredMap.get(coordKey);
@@ -1013,19 +1013,35 @@ function placeShields() {
 }
 
 function startShieldTracking() {
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return;
+
+  // Detecta quando o mapa PARA de mover (mouseup/touchend no #map)
+  let lastCx = 0, lastCy = 0;
+  setInterval(() => {
+    const cx = parseInt(mapEl.getAttribute('data-eos-cx')) || 0;
+    const cy = parseInt(mapEl.getAttribute('data-eos-cy')) || 0;
+    if (cx !== lastCx || cy !== lastCy) {
+      lastCx = cx; lastCy = cy;
+      // Remove escudos antigos quando o mapa se move (ficam desalinhados)
+      document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+      shieldElements = {};
+    }
+  }, 100);
+
+  // Coloca escudos quando o mapa estabiliza
+  let stableTimer = null;
   const container = document.getElementById('map_container');
-  if (!container) return;
+  if (container) {
+    const obs = new MutationObserver(() => {
+      if (stableTimer) clearTimeout(stableTimer);
+      stableTimer = setTimeout(placeShields, 300);
+    });
+    obs.observe(container, { childList: true, subtree: true });
+  }
 
-  // Observer para detectar novos sectors/imgs adicionados pelo pan
-  let debounceTimer = null;
-  const obs = new MutationObserver(() => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(placeShields, 200);
-  });
-  obs.observe(container, { childList: true, subtree: true });
-
-  // Fallback: scan periódico para apanhar edge cases
-  setInterval(placeShields, 3000);
+  // Fallback periódico
+  setInterval(placeShields, 2000);
 }
 
 function handleMapMouseMove(e) {
