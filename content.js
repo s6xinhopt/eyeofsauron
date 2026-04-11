@@ -201,6 +201,11 @@ function readPerVillageTroops(onProgress) {
     villages.push(currentVillage);
   }
 
+  // Debug: conta aldeias com/sem troops_own
+  const withOwn = villages.filter(v => v.troops_own).length;
+  const withoutOwn = villages.filter(v => !v.troops_own).length;
+  console.log(`[EOS] Aldeias: ${villages.length} total, ${withOwn} com troops_own, ${withoutOwn} sem troops_own`);
+
   return villages.length > 0 ? villages : null;
 }
 
