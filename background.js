@@ -25,8 +25,9 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
         eosToken:    data.token,
         eosStatus:   data.status,
         eosRole:     data.role,
+        eosSubscription: data.subscription || null,
       });
-      console.log(`[EOS] Autenticado: ${playerName} (${data.role})`);
+      console.log(`[EOS] Autenticado: ${playerName} (${data.role}) sub:${data.subscription?.status || 'none'}`);
 
       if (data.status === 'approved') {
         checkPendingBadge();

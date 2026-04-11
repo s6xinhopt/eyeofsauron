@@ -356,12 +356,19 @@ function injectEOSButton() {
   btn.style.cssText = `width:25px;height:25px;background-image:url('${chrome.runtime.getURL('background/eye_of_sauron.gif')}');background-size:cover;border-radius:4px;cursor:pointer;border:2px solid #c0a060;box-shadow:0 2px 8px rgba(0,0,0,0.6)`;
 
   btn.addEventListener('click', async () => {
-    const { eosToken } = await getStorage('eosToken');
+    const { eosToken, eosSubscription, eosTribeName } = await getStorage('eosToken', 'eosSubscription', 'eosTribeName');
     if (!eosToken) { alert('Ainda não autenticado. Aguarda uns segundos e tenta novamente.'); return; }
 
     // Se já está aberto, fecha
     const existing = document.getElementById('eos-panel-overlay');
     if (existing) { existing.remove(); return; }
+
+    // Verifica subscrição
+    const sub = eosSubscription || {};
+    if (!sub.active) {
+      showSubscriptionOverlay(sub, eosTribeName || '');
+      return;
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'eos-panel-overlay';
@@ -632,6 +639,59 @@ async function main() {
 
 // Arranca o mais cedo possível
 // ── Overlay do mapa: escudos em aldeias bunkadas + tooltip ──────────────────
+
+function showSubscriptionOverlay(sub, tribeName) {
+  const existing = document.getElementById('eos-sub-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'eos-sub-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:12px;padding:30px 36px;max-width:420px;text-align:center;color:#f0e0c8;box-shadow:0 12px 48px rgba(0,0,0,0.9)';
+
+  const isExpired = sub.status === 'expired';
+  const isNone = !sub.status || sub.status === 'none';
+  const isPending = sub.status === 'pending';
+
+  let title = '';
+  let message = '';
+  let buttonText = '';
+
+  if (isExpired) {
+    title = '⏰ Subscrição Expirada';
+    message = `A subscrição da tribo <strong style="color:#f8c850">${tribeName}</strong> expirou. Contacta o líder da tribo para renovar.`;
+  } else if (isNone) {
+    title = '🛡️ Tribo Detetada';
+    message = `A tribo <strong style="color:#f8c850">${tribeName}</strong> ainda não tem uma subscrição ativa.`;
+    buttonText = 'Ativar Subscrição';
+  } else if (isPending) {
+    title = '⏳ Pagamento Pendente';
+    message = `A subscrição da tribo <strong style="color:#f8c850">${tribeName}</strong> está a aguardar confirmação de pagamento.`;
+  }
+
+  panel.innerHTML = `
+    <div style="font-size:36px;margin-bottom:12px">${isExpired ? '⏰' : isNone ? '🛡️' : '⏳'}</div>
+    <h2 style="font-size:18px;color:#f8c850;margin:0 0 12px;font-weight:700">${title}</h2>
+    <p style="font-size:13px;color:#c0b090;line-height:1.6;margin:0 0 20px">${message}</p>
+    ${buttonText ? `<button id="eos-subscribe-btn" style="padding:12px 28px;background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.5px;box-shadow:0 4px 16px #e8502040">${buttonText}</button>` : ''}
+    <div style="margin-top:16px;font-size:11px;color:#807060">Clica fora para fechar</div>
+  `;
+
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  // Botão de subscrição abre a página de pagamento
+  const subBtn = overlay.querySelector('#eos-subscribe-btn');
+  if (subBtn) {
+    subBtn.addEventListener('click', () => {
+      // TODO: abrir página de checkout quando Stripe estiver implementado
+      alert('Sistema de pagamentos em breve! Contacta o administrador.');
+    });
+  }
+}
 
 function isMapPage() {
   return new URLSearchParams(window.location.search).get('screen') === 'map';
