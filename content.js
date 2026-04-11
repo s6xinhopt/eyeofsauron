@@ -709,7 +709,8 @@ function showSubscriptionOverlay(sub, tribeName) {
 
       const iframe = document.createElement('iframe');
       iframe.src = url;
-      iframe.style.cssText = 'width:100%;height:100%;border:none';
+      iframe.style.cssText = 'width:100%;height:100%;border:none;overflow:hidden';
+      iframe.scrolling = 'no';
 
       panelOverlay.addEventListener('click', (e) => { if (e.target === panelOverlay) panelOverlay.remove(); });
 
