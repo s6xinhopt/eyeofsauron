@@ -833,16 +833,17 @@ function injectMapSettingsButton() {
 
     clearInterval(waitBtn);
 
-    // Cria botão EOS settings — usa o GIF do olho de Sauron
+    // Cria botão EOS settings — engrenagem
     const btn = document.createElement('div');
     btn.id = 'eos-map-settings-btn';
     btn.title = 'Eye of Sauron - Definições do Mapa';
-    btn.style.cssText = `position:absolute;top:6px;right:6px;width:32px;height:32px;z-index:99999;cursor:pointer;
-      background-image:url('${chrome.runtime.getURL('background/eye_of_sauron.gif')}');background-size:cover;
-      border:2px solid #c0a060;border-radius:50%;
-      box-shadow:0 0 10px rgba(232,120,48,0.4),0 2px 8px rgba(0,0,0,0.5);transition:all .2s`;
-    btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.15)'; btn.style.boxShadow = '0 0 16px rgba(232,120,48,0.6),0 2px 8px rgba(0,0,0,0.5)'; });
-    btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#c0a060'; btn.style.transform = ''; btn.style.boxShadow = '0 0 10px rgba(232,120,48,0.4),0 2px 8px rgba(0,0,0,0.5)'; });
+    btn.style.cssText = `position:absolute;top:5px;right:5px;width:30px;height:30px;z-index:99999;cursor:pointer;
+      background:linear-gradient(135deg,#5a4430,#3a2818);border:1.5px solid #c0a060;border-radius:6px;
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 2px 8px rgba(0,0,0,0.5);transition:all .2s`;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8a030" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+    btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.1)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#c0a060'; btn.style.transform = ''; });
     btn.addEventListener('click', toggleMapSettingsPanel);
     mapEl.style.position = 'relative';
     mapEl.appendChild(btn);
