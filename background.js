@@ -5,16 +5,16 @@ const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 
 // ── Autenticação: regista jogador e guarda token ─────────────────────────────
 
-async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world }) {
+async function handlePlayerSeen({ playerName, tribeName, tribeTag, allyId, hasTribe, world }) {
   if (!playerName || !world) return;
 
-  await chrome.storage.local.set({ eosPlayerName: playerName, eosWorld: world, eosTribeName: tribeName || '' });
+  await chrome.storage.local.set({ eosPlayerName: playerName, eosWorld: world, eosTribeName: tribeName || '', eosTribeTag: tribeTag || '' });
 
   try {
     const res = await fetch(`${EOS_SERVER}/api/auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName, tribeName, allyId, hasTribe, world })
+      body: JSON.stringify({ playerName, tribeName, tribeTag: tribeTag || '', allyId, hasTribe, world })
     });
 
     if (!res.ok) return;

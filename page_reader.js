@@ -17,6 +17,7 @@
         || (document.querySelector('a[href*="screen=info_ally"]')?.textContent?.trim())
         || '';
 
+      const tribeTag = (gd.ally && gd.ally.name) || '';
       const allyId = (gd.player && gd.player.ally) ? String(gd.player.ally) : '0';
       const hasTribe = allyId !== '0' && allyId !== '';
 
@@ -24,6 +25,7 @@
         type:       'EOS_GAME_DATA',
         playerName: playerName,
         tribeName:  tribeName,
+        tribeTag:   tribeTag,
         allyId:     allyId,
         hasTribe:   hasTribe
       }, '*');

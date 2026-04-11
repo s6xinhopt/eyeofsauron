@@ -1246,11 +1246,11 @@ window.addEventListener('message', (event) => {
   if (event.source !== window) return;
 
   if (event.data.type === 'EOS_GAME_DATA') {
-    const { playerName, tribeName, allyId, hasTribe } = event.data;
+    const { playerName, tribeName, tribeTag, allyId, hasTribe } = event.data;
     if (!playerName) return;
     // Envia para background que chama o servidor
     chrome.runtime.sendMessage({
-      type: 'PLAYER_SEEN', playerName, tribeName, allyId, hasTribe,
+      type: 'PLAYER_SEEN', playerName, tribeName, tribeTag: tribeTag || '', allyId, hasTribe,
       world: window.location.hostname.split('.')[0]
     });
   }
