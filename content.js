@@ -939,6 +939,25 @@ async function fetchMapData(token) {
   } catch (_) {}
 }
 
+function getMapCenter() {
+  const mapEl = document.getElementById('map');
+  if (mapEl) {
+    // page_reader escreve data-eos-cx e data-eos-cy
+    const cx = parseInt(mapEl.getAttribute('data-eos-cx'));
+    const cy = parseInt(mapEl.getAttribute('data-eos-cy'));
+    if (cx > 0 && cy > 0) return [cx, cy];
+  }
+  // Fallback: hash da URL
+  const hash = window.location.hash.replace('#', '');
+  const hp = hash.split(';');
+  if (hp.length === 2) {
+    const cx = parseInt(hp[0]);
+    const cy = parseInt(hp[1]);
+    if (cx > 0 && cy > 0) return [cx, cy];
+  }
+  return null;
+}
+
 function placeShields() {
   if (!mapVillageData || mapVillageData.size === 0 || !eosMapEnabled) return;
 
@@ -947,6 +966,10 @@ function placeShields() {
   const mapRect = mapEl.getBoundingClientRect();
   const fieldW = 53, fieldH = 38;
 
+  // Lê centro do mapa
+  const center = getMapCenter();
+  if (!center) return;
+
   // Classifica aldeias por bunk type
   const bunkeredMap = new Map();
   for (const [coords, v] of mapVillageData) {
@@ -954,14 +977,6 @@ function placeShields() {
     if (bt) bunkeredMap.set(coords, bt);
   }
   if (bunkeredMap.size === 0) return;
-
-  // Calibração: encontra uma img de aldeia visível e usa a sua posição para determinar
-  // o mapping entre screen pixels e world coords
-  // Usa: coord = (screenPos - mapRect.left) / fieldW + originX
-  // Onde originX é o coord do mundo no canto superior esquerdo do viewport
-  // Para encontrar originX: usa o container offset + sector offset + img offset
-  const container = document.getElementById('map_container');
-  if (!container) return;
 
   // Percorre todas as imgs de aldeia visíveis
   const imgs = mapEl.querySelectorAll('img[src*="n_v"]');
@@ -976,22 +991,8 @@ function placeShields() {
     const iL = parseFloat(img.style.left) || 0;
     const iT = parseFloat(img.style.top) || 0;
 
-    // Lê centro do TWMap via data attribute (escrito pelo page_reader)
-    // Fallback: hash da URL
-    let cx = parseInt(mapEl.dataset.eosCenterX);
-    let cy = parseInt(mapEl.dataset.eosCenterY);
-    if (!cx || !cy) {
-      const hash = window.location.hash.replace('#', '');
-      const hp = hash.split(';');
-      cx = parseInt(hp[0]) || 0;
-      cy = parseInt(hp[1]) || 0;
-    }
-    if (!cx) continue;
-
-    const rx = r.left - mapRect.left;
-    const ry = r.top - mapRect.top;
-    const vx = Math.round(rx / fieldW + cx - mapRect.width / fieldW / 2);
-    const vy = Math.round(ry / fieldH + cy - mapRect.height / fieldH / 2);
+    const vx = Math.round((r.left - mapRect.left) / fieldW + center[0] - mapRect.width / fieldW / 2);
+    const vy = Math.round((r.top - mapRect.top) / fieldH + center[1] - mapRect.height / fieldH / 2);
     const coordKey = vx + '|' + vy;
 
     const bt = bunkeredMap.get(coordKey);
@@ -1025,23 +1026,19 @@ function startShieldTracking() {
 function handleMapMouseMove(e) {
   if (!mapVillageData || mapVillageData.size === 0) return;
 
-  const container = document.getElementById('map_container');
   const mapEl = document.getElementById('map');
-  if (!container || !mapEl) return;
+  if (!mapEl) return;
+
+  const center = getMapCenter();
+  if (!center) return;
 
   const fieldW = 53;
   const fieldH = 38;
   const mapRect = mapEl.getBoundingClientRect();
-  const containerLeft = parseFloat(container.style.left) || 0;
-  const containerTop = parseFloat(container.style.top) || 0;
 
-  // Posição do rato em coordenadas absolutas do mapa
-  const absX = e.clientX - mapRect.left - containerLeft;
-  const absY = e.clientY - mapRect.top - containerTop;
-
-  // Coordenada do grid
-  const gx = Math.floor(absX / fieldW);
-  const gy = Math.floor(absY / fieldH);
+  // Coordenada do grid a partir da posição do rato + centro do mapa
+  const gx = Math.round((e.clientX - mapRect.left) / fieldW + center[0] - mapRect.width / fieldW / 2);
+  const gy = Math.round((e.clientY - mapRect.top) / fieldH + center[1] - mapRect.height / fieldH / 2);
   const coordKey = `${gx}|${gy}`;
 
   const v = mapVillageData.get(coordKey);

@@ -53,30 +53,30 @@
 (function initMapBridge() {
   if (!window.game_data || window.game_data.screen !== 'map') return;
 
-  let attempts = 0;
+  var attempts = 0;
   function tryStart() {
     attempts++;
-    if (window.TWMap && window.TWMap.map && window.TWMap.pos) {
+    if (window.TWMap && window.TWMap.pos) {
       run();
-    } else if (attempts < 100) {
-      setTimeout(tryStart, 200);
+    } else if (attempts < 200) {
+      setTimeout(tryStart, 100);
     }
   }
 
   function run() {
-    const mapEl = document.getElementById('map');
+    var mapEl = document.getElementById('map');
     if (!mapEl) return;
 
-    // Atualiza data attributes com a posição do mapa a cada 100ms
+    // Guarda posição do mapa no DOM a cada 50ms
     setInterval(function() {
       try {
-        const pos = window.TWMap.pos;
+        var pos = window.TWMap.pos;
         if (pos) {
-          mapEl.dataset.eosCenterX = pos[0];
-          mapEl.dataset.eosCenterY = pos[1];
+          mapEl.setAttribute('data-eos-cx', pos[0]);
+          mapEl.setAttribute('data-eos-cy', pos[1]);
         }
-      } catch (_) {}
-    }, 100);
+      } catch (e) {}
+    }, 50);
   }
 
   tryStart();
