@@ -66,9 +66,10 @@
           const map = window.TWMap.map;
           const pos = window.TWMap.pos || [500, 500];
           const scale = map.scale || [53, 38];
-          const canvas = document.querySelector('#map_container canvas') || document.querySelector('#map canvas') || document.querySelector('canvas');
-          if (!canvas) return;
-          const rect = canvas.getBoundingClientRect();
+          const mapEl = document.getElementById('map');
+          if (!mapEl) return;
+          const rect = mapEl.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) return;
 
           const state = `${pos[0]},${pos[1]},${rect.left},${rect.top},${rect.width},${rect.height}`;
           if (state === lastState) return;

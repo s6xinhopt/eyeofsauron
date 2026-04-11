@@ -673,13 +673,13 @@ async function initMapOverlay() {
   // Pede ao page_reader para enviar o viewport (pode já ter arrancado)
   window.postMessage({ type: 'EOS_MAP_REQUEST_VIEWPORT' }, '*');
 
-  // Tooltip via mousemove — ativa apenas quando o canvas do mapa existir
-  const waitForCanvas = setInterval(() => {
-    const canvas = document.querySelector('#map_container canvas, #map canvas, canvas');
-    if (canvas && canvas.parentElement) {
-      clearInterval(waitForCanvas);
-      canvas.parentElement.addEventListener('mousemove', handleMapMouseMove);
-      canvas.parentElement.addEventListener('mouseleave', () => {
+  // Tooltip via mousemove no elemento #map
+  const waitForMapEl = setInterval(() => {
+    const mapEl = document.getElementById('map');
+    if (mapEl) {
+      clearInterval(waitForMapEl);
+      mapEl.addEventListener('mousemove', handleMapMouseMove);
+      mapEl.addEventListener('mouseleave', () => {
         if (mapTooltipEl) mapTooltipEl.style.display = 'none';
       });
     }
