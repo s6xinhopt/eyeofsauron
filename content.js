@@ -660,9 +660,8 @@ async function initMapOverlay() {
   // Busca dados da tribo e coloca escudos
   await fetchMapData(eosToken);
 
-  // Retry: se os dados chegaram mas os escudos não foram criados
-  setTimeout(() => placeShields(), 2000);
-  setTimeout(() => placeShields(), 5000);
+  // Retry e inicia tracking de movimento do mapa
+  setTimeout(() => { placeShields(); startShieldTracking(); }, 2000);
 
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
@@ -700,39 +699,71 @@ async function fetchMapData(token) {
 function placeShields() {
   if (!mapVillageData) return;
 
-  // Usa viewport se disponível, senão default TW scale
-  const fieldW = mapViewport?.fieldW || 53;
-  const fieldH = mapViewport?.fieldH || 38;
+  const mapEl = document.getElementById('map');
+  const container = document.getElementById('map_container');
+  if (!mapEl || !container) return;
 
-  // Cria overlay dentro de #map_container (move-se com o mapa)
+  const fieldW = 53;
+  const fieldH = 38;
+
+  // Cria overlay dentro de #map (viewport fixo, visível)
   if (!mapOverlayEl) {
-    const container = document.getElementById('map_container');
-    if (!container) return;
     mapOverlayEl = document.createElement('div');
     mapOverlayEl.id = 'eos-map-shield-overlay';
-    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;pointer-events:none;z-index:100';
-    container.appendChild(mapOverlayEl);
+    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99999;overflow:hidden';
+    mapEl.appendChild(mapOverlayEl);
   }
+
+  // Lê offset do container para calcular posições relativas ao viewport
+  const containerLeft = parseFloat(container.style.left) || 0;
+  const containerTop = parseFloat(container.style.top) || 0;
 
   for (const [coords, v] of mapVillageData) {
     const t = v.troops_total || {};
     const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
-    if (!bunkered) continue;
-
-    if (shieldElements[coords]) continue; // Já criado
+    if (!bunkered) {
+      if (shieldElements[coords]) shieldElements[coords].style.display = 'none';
+      continue;
+    }
 
     const [vx, vy] = coords.split('|').map(Number);
     if (isNaN(vx) || isNaN(vy)) continue;
 
-    const el = document.createElement('img');
-    el.src = SHIELD_SVG;
-    el.style.cssText = 'position:absolute;width:18px;height:18px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))';
-    // Posição absoluta no container: x * fieldW, y * fieldH
-    el.style.left = (vx * fieldW + fieldW / 2 - 9) + 'px';
-    el.style.top = (vy * fieldH + fieldH / 2 - 9) + 'px';
-    mapOverlayEl.appendChild(el);
-    shieldElements[coords] = el;
+    // Posição absoluta do tile no mapa
+    const absX = vx * fieldW;
+    const absY = vy * fieldH;
+    // Posição relativa ao viewport #map
+    const px = absX + containerLeft + fieldW / 2 - 9;
+    const py = absY + containerTop + fieldH / 2 - 9;
+
+    if (!shieldElements[coords]) {
+      const el = document.createElement('img');
+      el.src = SHIELD_SVG;
+      el.style.cssText = 'position:absolute;width:18px;height:18px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))';
+      mapOverlayEl.appendChild(el);
+      shieldElements[coords] = el;
+    }
+    shieldElements[coords].style.left = px + 'px';
+    shieldElements[coords].style.top = py + 'px';
+    shieldElements[coords].style.display = '';
   }
+}
+
+// Atualiza posições dos escudos quando o mapa se move
+function startShieldTracking() {
+  const container = document.getElementById('map_container');
+  if (!container || !mapVillageData) return;
+
+  let lastLeft = '', lastTop = '';
+  setInterval(() => {
+    const l = container.style.left;
+    const t = container.style.top;
+    if (l !== lastLeft || t !== lastTop) {
+      lastLeft = l;
+      lastTop = t;
+      placeShields();
+    }
+  }, 50);
 }
 
 function handleMapMouseMove(e) {
