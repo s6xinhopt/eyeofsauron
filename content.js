@@ -356,17 +356,22 @@ function injectEOSButton() {
   btn.style.cssText = `width:25px;height:25px;background-image:url('${chrome.runtime.getURL('background/eye_of_sauron.gif')}');background-size:cover;border-radius:4px;cursor:pointer;border:2px solid #c0a060;box-shadow:0 2px 8px rgba(0,0,0,0.6)`;
 
   btn.addEventListener('click', async () => {
-    const { eosToken, eosSubscription, eosTribeName } = await getStorage('eosToken', 'eosSubscription', 'eosTribeName');
+    const { eosToken, eosSubscription, eosTribeName, eosPlayerName } = await getStorage('eosToken', 'eosSubscription', 'eosTribeName', 'eosPlayerName');
     if (!eosToken) { alert('Ainda não autenticado. Aguarda uns segundos e tenta novamente.'); return; }
 
     // Se já está aberto, fecha
     const existing = document.getElementById('eos-panel-overlay');
     if (existing) { existing.remove(); return; }
+    const existingSub = document.getElementById('eos-sub-overlay');
+    if (existingSub) { existingSub.remove(); return; }
+
+    // Nome da tribo: tenta storage, depois subscrição, depois page_reader
+    const tribe = eosTribeName || eosSubscription?.payer_player_name || eosPlayerName || '';
 
     // Verifica subscrição
     const sub = eosSubscription || {};
     if (!sub.active) {
-      showSubscriptionOverlay(sub, eosTribeName || '');
+      showSubscriptionOverlay(sub, tribe);
       return;
     }
 
@@ -662,10 +667,14 @@ function showSubscriptionOverlay(sub, tribeName) {
 
   if (isExpired) {
     title = '⏰ Subscrição Expirada';
-    message = `A subscrição da tribo <strong style="color:#f8c850">${tribeName}</strong> expirou. Contacta o líder da tribo para renovar.`;
+    message = tribeName
+      ? `A subscrição da tribo <strong style="color:#f8c850">${tribeName}</strong> expirou. Contacta o líder da tribo para renovar.`
+      : 'A subscrição da tua tribo expirou. Contacta o líder para renovar.';
   } else if (isNone) {
     title = '🛡️ Tribo Detetada';
-    message = `A tribo <strong style="color:#f8c850">${tribeName}</strong> ainda não tem uma subscrição ativa.`;
+    message = tribeName
+      ? `A tribo <strong style="color:#f8c850">${tribeName}</strong> ainda não tem uma subscrição ativa.`
+      : 'A tua tribo ainda não tem uma subscrição ativa.';
     buttonText = 'Ativar Subscrição';
   } else if (isPending) {
     title = '⏳ Pagamento Pendente';
