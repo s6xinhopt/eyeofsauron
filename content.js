@@ -365,8 +365,8 @@ function injectEOSButton() {
     const existingSub = document.getElementById('eos-sub-overlay');
     if (existingSub) { existingSub.remove(); return; }
 
-    // Nome da tribo: tenta storage, depois subscrição, depois page_reader
-    const tribe = eosTribeName || eosSubscription?.payer_player_name || eosPlayerName || '';
+    // Nome da tribo: apenas do storage (guardado pelo page_reader → background)
+    const tribe = eosTribeName || '';
 
     // Verifica subscrição
     const sub = eosSubscription || {};

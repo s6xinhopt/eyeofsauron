@@ -26,6 +26,7 @@ async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world
         eosStatus:   data.status,
         eosRole:     data.role,
         eosSubscription: data.subscription || null,
+        eosTribeName: data.tribeName || tribeName || '',
       });
       console.log(`[EOS] Autenticado: ${playerName} (${data.role}) sub:${data.subscription?.status || 'none'}`);
 
