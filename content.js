@@ -657,22 +657,15 @@ async function initMapOverlay() {
   mapTooltipEl.style.cssText = 'position:fixed;z-index:2147483647;background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;padding:8px 12px;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;pointer-events:none;display:none;max-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.8)';
   document.body.appendChild(mapTooltipEl);
 
-  // Busca dados da tribo
+  // Busca dados da tribo e coloca escudos
   await fetchMapData(eosToken);
+
+  // Retry: se os dados chegaram mas os escudos não foram criados
+  setTimeout(() => placeShields(), 2000);
+  setTimeout(() => placeShields(), 5000);
 
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
-
-
-  // Espera pelo viewport do page_reader para obter fieldW/fieldH
-  // Depois coloca os escudos directamente usando x*fieldW, y*fieldH
-  window.addEventListener('message', (e) => {
-    if (!e.data) return;
-    if (e.data.type === 'EOS_MAP_VIEWPORT') {
-      mapViewport = e.data;
-      placeShields();
-    }
-  });
 
   // Tooltip via mousemove no elemento #map
   const waitForMapEl = setInterval(() => {
