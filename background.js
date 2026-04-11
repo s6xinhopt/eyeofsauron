@@ -313,8 +313,27 @@ async function checkTroopRequest(world) {
 // ── Eventos ─────────────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(async () => {
-  // Recupera mundos conhecidos e recria alarmes
+  // ── Migração: copia dados antigos (globais) para chaves world-scoped ──
   const all = await chrome.storage.local.get(null);
+  const oldWorld = all.eosWorld;
+  const oldToken = all.eosToken;
+  if (oldWorld && oldToken && !all[worldKey(oldWorld, 'token')]) {
+    console.log(`[EOS] Migração: a copiar dados globais para eos.${oldWorld}.*`);
+    await setWorldData(oldWorld, {
+      token:        oldToken,
+      playerName:   all.eosPlayerName || '',
+      tribeName:    all.eosTribeName || '',
+      tribeTag:     all.eosTribeTag || '',
+      status:       all.eosStatus || null,
+      role:         all.eosRole || null,
+      subscription: all.eosSubscription || null,
+      isLeader:     all.eosIsLeader || false,
+    });
+    await chrome.storage.local.set({ eosLastWorld: oldWorld });
+    console.log(`[EOS] Migração concluída para ${oldWorld}`);
+  }
+
+  // Recupera mundos conhecidos e recria alarmes
   const worlds = new Set();
   for (const key of Object.keys(all)) {
     const m = key.match(/^eos\.([a-z0-9]+)\.schedules$/);
