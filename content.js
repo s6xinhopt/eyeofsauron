@@ -734,7 +734,7 @@ function injectMapSettingsButton() {
       background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;
       display:flex;align-items:center;justify-content:center;
       box-shadow:0 2px 8px rgba(0,0,0,0.5);transition:all .15s`;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8a030" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8a030" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
     btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.1)'; });
     btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#e8502040'; btn.style.transform = ''; });
     btn.addEventListener('click', toggleMapSettingsPanel);
@@ -771,12 +771,12 @@ function buildSettingsPanelHTML() {
   const toggleColor = eosMapEnabled ? '#4caf50' : '#555';
   const toggleBg = eosMapEnabled ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
 
+  const unitPng = (u) => chrome.runtime.getURL(`png/unit_${u}.png`);
+  const ALL_UNITS = ['spear','sword','axe','spy','light','heavy','ram','catapult','snob'];
+
   let html = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid #e8502030;flex-shrink:0">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:16px">👁</span>
-        <span style="font-size:14px;font-weight:700;color:#f8c850;letter-spacing:1px">EYE OF SAURON</span>
-      </div>
+      <span style="font-size:13px;font-weight:700;color:#f8c850;letter-spacing:.5px;text-transform:uppercase">Definições do Mapa</span>
       <button id="eos-map-toggle" style="width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;
         background:${toggleBg};position:relative;transition:background .3s">
         <div style="width:18px;height:18px;border-radius:50%;background:#f4e8d0;position:absolute;top:3px;
@@ -815,17 +815,24 @@ function buildSettingsPanelHTML() {
               font-size:10px;cursor:pointer;padding:2px 6px;line-height:1">✕</button>
           </div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
           ${units.map(([unit, val]) => `
-            <div style="display:flex;align-items:center;gap:4px;background:#1e1a14;border:1px solid #e8502020;border-radius:4px;padding:3px 8px">
-              <span style="font-size:10px;color:#b09878;text-transform:uppercase">${unit}</span>
+            <div style="display:flex;align-items:center;gap:3px;background:#1e1a14;border:1px solid #e8502020;border-radius:4px;padding:3px 6px">
+              <img src="${unitPng(unit)}" style="width:16px;height:16px" title="${unit}">
               <input type="number" value="${val}" data-unit="${unit}" data-idx="${i}" min="0" step="1000"
-                style="width:60px;background:#141010;border:1px solid #e8502020;border-radius:3px;color:#f0e0c8;
-                font-size:11px;padding:2px 4px;outline:none;text-align:center">
+                style="width:50px;background:#141010;border:1px solid #e8502020;border-radius:3px;color:#f0e0c8;
+                font-size:10px;padding:2px 3px;outline:none;text-align:center">
             </div>
           `).join('')}
-          <button data-add-unit="${i}" style="background:none;border:1px dashed #e8502025;color:#b09878;border-radius:4px;
-            font-size:10px;cursor:pointer;padding:3px 8px">+ unidade</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px" data-unit-selector="${i}">
+          ${ALL_UNITS.filter(u => !units.some(([eu]) => eu === u)).map(u => `
+            <img src="${unitPng(u)}" data-add-unit-img="${u}" data-idx="${i}" title="Adicionar ${u}"
+              style="width:16px;height:16px;opacity:.25;cursor:pointer;border-radius:2px;padding:1px;
+              border:1px solid transparent;transition:all .15s"
+              onmouseenter="this.style.opacity='.7';this.style.borderColor='#e8502040'"
+              onmouseleave="this.style.opacity='.25';this.style.borderColor='transparent'">
+          `).join('')}
         </div>
       </div>
     `;
@@ -891,16 +898,14 @@ function attachSettingsEvents(panel) {
     });
   });
 
-  // Add unit to bunk type
-  panel.querySelectorAll('[data-add-unit]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.addUnit);
-      const unit = prompt('Nome da unidade (spear, sword, axe, spy, light, heavy, ram, catapult, snob):');
-      if (unit && TROOP_NAMES.includes(unit)) {
-        bunkTypes[idx][unit] = 5000;
-        toggleMapSettingsPanel();
-        toggleMapSettingsPanel();
-      }
+  // Add unit via PNG click
+  panel.querySelectorAll('[data-add-unit-img]').forEach(img => {
+    img.addEventListener('click', () => {
+      const idx = parseInt(img.dataset.idx);
+      const unit = img.dataset.addUnitImg;
+      bunkTypes[idx][unit] = 5000;
+      toggleMapSettingsPanel();
+      toggleMapSettingsPanel();
     });
   });
 
