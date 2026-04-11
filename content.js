@@ -754,7 +754,7 @@ function toggleMapSettingsPanel() {
     padding:0;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;
     box-shadow:0 8px 32px rgba(0,0,0,0.8);max-height:50vh;display:flex;flex-direction:column;overflow:hidden`;
 
-  panel.innerHTML = buildSettingsPanelHTML();
+  panel.innerHTML = `<style>.eos-scroll::-webkit-scrollbar{width:5px}.eos-scroll::-webkit-scrollbar-track{background:#1a1610;border-radius:3px}.eos-scroll::-webkit-scrollbar-thumb{background:#e8502040;border-radius:3px}.eos-scroll::-webkit-scrollbar-thumb:hover{background:#e8783060}</style>` + buildSettingsPanelHTML();
   document.getElementById('map').appendChild(panel);
   attachSettingsEvents(panel);
 }
@@ -776,7 +776,7 @@ function buildSettingsPanelHTML() {
       </button>
     </div>
 
-    <div style="flex:1;overflow-y:auto;padding:14px">
+    <div style="flex:1;overflow-y:auto;padding:14px" class="eos-scroll">
     <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;font-weight:700">
       Tipos de Bunk
     </div>
@@ -932,62 +932,68 @@ async function fetchMapData(token) {
 }
 
 function placeShields() {
-  if (!mapVillageData || mapVillageData.size === 0) return;
+  if (!mapVillageData || mapVillageData.size === 0 || !eosMapEnabled) return;
 
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
   const mapRect = mapEl.getBoundingClientRect();
-  const scale = [53, 38];
-
-  // Lê centro do hash da URL (#x;y)
-  let centerX = 0, centerY = 0;
-  const hash = window.location.hash.replace('#', '');
-  const parts = hash.split(';');
-  if (parts.length === 2) {
-    centerX = parseInt(parts[0]) || 0;
-    centerY = parseInt(parts[1]) || 0;
-  }
-  if (!centerX) return;
-
-  if (!eosMapEnabled) return;
+  const fieldW = 53, fieldH = 38;
 
   // Classifica aldeias por bunk type
-  const bunkeredMap = new Map(); // coordKey → bunkType
+  const bunkeredMap = new Map();
   for (const [coords, v] of mapVillageData) {
     const bt = classifyVillageForMap(v.troops_total);
     if (bt) bunkeredMap.set(coords, bt);
   }
   if (bunkeredMap.size === 0) return;
 
-  // Percorre todas as imgs de aldeia — encontra novas que precisam de escudo
+  // Calibração: encontra uma img de aldeia visível e usa a sua posição para determinar
+  // o mapping entre screen pixels e world coords
+  // Usa: coord = (screenPos - mapRect.left) / fieldW + originX
+  // Onde originX é o coord do mundo no canto superior esquerdo do viewport
+  // Para encontrar originX: usa o container offset + sector offset + img offset
+  const container = document.getElementById('map_container');
+  if (!container) return;
+
+  // Percorre todas as imgs de aldeia visíveis
   const imgs = mapEl.querySelectorAll('img[src*="n_v"]');
   for (const img of imgs) {
-    // Skip se já tem escudo como próximo sibling
+    // Skip se já tem escudo
     if (img.nextElementSibling && img.nextElementSibling.dataset?.eosShield) continue;
 
+    // Calcula coordenada usando a posição em pixels da img no ecrã
     const r = img.getBoundingClientRect();
-    // Fora do viewport — skip
     if (r.right < mapRect.left || r.bottom < mapRect.top || r.left > mapRect.right || r.top > mapRect.bottom) continue;
 
-    // Calcula coordenadas do mundo
+    const iL = parseFloat(img.style.left) || 0;
+    const iT = parseFloat(img.style.top) || 0;
+
+    // Lê centro do TWMap via data attribute (escrito pelo page_reader)
+    // Fallback: hash da URL
+    let cx = parseInt(mapEl.dataset.eosCenterX);
+    let cy = parseInt(mapEl.dataset.eosCenterY);
+    if (!cx || !cy) {
+      const hash = window.location.hash.replace('#', '');
+      const hp = hash.split(';');
+      cx = parseInt(hp[0]) || 0;
+      cy = parseInt(hp[1]) || 0;
+    }
+    if (!cx) continue;
+
     const rx = r.left - mapRect.left;
     const ry = r.top - mapRect.top;
-    const vx = Math.round(rx / scale[0] + centerX - mapRect.width / scale[0] / 2);
-    const vy = Math.round(ry / scale[1] + centerY - mapRect.height / scale[1] / 2);
+    const vx = Math.round(rx / fieldW + cx - mapRect.width / fieldW / 2);
+    const vy = Math.round(ry / fieldH + cy - mapRect.height / fieldH / 2);
     const coordKey = vx + '|' + vy;
 
     const bt = bunkeredMap.get(coordKey);
     if (!bt) continue;
 
-    // Coloca escudo imediatamente após a img no mesmo sector
     const shield = document.createElement('img');
     shield.src = makeShieldSvg(bt.color);
     shield.dataset.eosShield = coordKey;
-    shield.title = bt.name;
-    const imgLeft = parseFloat(img.style.left) || 0;
-    const imgTop = parseFloat(img.style.top) || 0;
-    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${imgLeft + 18}px;top:${imgTop - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
-    // Insere logo depois da img
+    shield.title = bt.name + ' (' + coordKey + ')';
+    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${iL + 18}px;top:${iT - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
     img.insertAdjacentElement('afterend', shield);
   }
 }
