@@ -435,7 +435,7 @@ function injectEOSButton() {
     closeBtn.onclick = () => overlay.remove();
 
     const iframe = document.createElement('iframe');
-    iframe.src = `${EOS_SERVER}/panel?token=${eosToken}`;
+    iframe.src = `${EOS_SERVER}/panel?token=${eosToken}&v=${chrome.runtime.getManifest().version}`;
     iframe.style.cssText = 'width:100%;height:100%;border:none';
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
