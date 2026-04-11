@@ -201,10 +201,6 @@ function readPerVillageTroops(onProgress) {
     villages.push(currentVillage);
   }
 
-  // Debug: conta aldeias com/sem troops_own
-  const withOwn = villages.filter(v => v.troops_own).length;
-  const withoutOwn = villages.filter(v => !v.troops_own).length;
-  console.log(`[EOS] Aldeias: ${villages.length} total, ${withOwn} com troops_own, ${withoutOwn} sem troops_own`);
 
   return villages.length > 0 ? villages : null;
 }
@@ -635,7 +631,188 @@ async function main() {
 }
 
 // Arranca o mais cedo possível
-function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); }
+// ── Overlay do mapa: escudos em aldeias bunkadas + tooltip ──────────────────
+
+function isMapPage() {
+  return new URLSearchParams(window.location.search).get('screen') === 'map';
+}
+
+let mapVillageData = null; // Map<coordKey, villageData>
+let mapViewport = null;
+let mapOverlayEl = null;
+let mapTooltipEl = null;
+let shieldElements = {}; // coordKey → DOM element
+
+const SHIELD_SVG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234caf50" stroke="%231a1a2e" stroke-width="1"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"/></svg>')}`;
+
+async function initMapOverlay() {
+  if (!isMapPage()) return;
+
+  const { eosToken, eosWorld } = await getStorage('eosToken', 'eosWorld');
+  if (!eosToken || !eosWorld) return;
+
+  // Cria elementos do overlay
+  mapTooltipEl = document.createElement('div');
+  mapTooltipEl.id = 'eos-map-tooltip';
+  mapTooltipEl.style.cssText = 'position:fixed;z-index:2147483647;background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;padding:8px 12px;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;pointer-events:none;display:none;max-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.8)';
+  document.body.appendChild(mapTooltipEl);
+
+  // Busca dados da tribo
+  await fetchMapData(eosToken);
+
+  // Refresh a cada 5 minutos
+  setInterval(() => fetchMapData(eosToken), 300000);
+
+  // Escuta viewport do page_reader
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.data?.type !== 'EOS_MAP_VIEWPORT') return;
+    mapViewport = e.data;
+    updateMapOverlay();
+  });
+
+  // Tooltip via mousemove no mapa
+  document.addEventListener('mousemove', handleMapMouseMove);
+}
+
+async function fetchMapData(token) {
+  try {
+    const res = await fetch(`${EOS_SERVER}/api/village-troops?tribe=true`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const { villages } = await res.json();
+    mapVillageData = new Map();
+    for (const v of (villages || [])) {
+      if (v.village_coords) {
+        mapVillageData.set(v.village_coords, v);
+      }
+    }
+    if (mapViewport) updateMapOverlay();
+  } catch (_) {}
+}
+
+function updateMapOverlay() {
+  if (!mapVillageData || !mapViewport) return;
+
+  const { centerX, centerY, fieldW, fieldH, canvasLeft, canvasTop, canvasW, canvasH } = mapViewport;
+
+  // Calcula quantos campos cabem no canvas
+  const halfW = Math.ceil(canvasW / fieldW / 2) + 1;
+  const halfH = Math.ceil(canvasH / fieldH / 2) + 1;
+
+  // Cria overlay container se não existe
+  if (!mapOverlayEl) {
+    mapOverlayEl = document.createElement('div');
+    mapOverlayEl.id = 'eos-map-shield-overlay';
+    mapOverlayEl.style.cssText = 'position:fixed;pointer-events:none;z-index:10;overflow:hidden';
+    document.body.appendChild(mapOverlayEl);
+  }
+  mapOverlayEl.style.left = canvasLeft + 'px';
+  mapOverlayEl.style.top = canvasTop + 'px';
+  mapOverlayEl.style.width = canvasW + 'px';
+  mapOverlayEl.style.height = canvasH + 'px';
+
+  // Marca todos os escudos como não-vistos
+  const seen = new Set();
+
+  // Itera aldeias visíveis
+  for (const [coords, v] of mapVillageData) {
+    const [vx, vy] = coords.split('|').map(Number);
+    if (isNaN(vx) || isNaN(vy)) continue;
+
+    // Verifica se está bunkada
+    const t = v.troops_total || {};
+    const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
+    if (!bunkered) continue;
+
+    // Calcula posição em pixels relativa ao canvas
+    const px = (vx - centerX) * fieldW + canvasW / 2;
+    const py = (vy - centerY) * fieldH + canvasH / 2;
+
+    // Fora do viewport?
+    if (px < -fieldW || py < -fieldH || px > canvasW + fieldW || py > canvasH + fieldH) continue;
+
+    seen.add(coords);
+
+    // Cria ou atualiza escudo
+    if (!shieldElements[coords]) {
+      const el = document.createElement('img');
+      el.src = SHIELD_SVG;
+      el.style.cssText = 'position:absolute;width:16px;height:16px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.6))';
+      mapOverlayEl.appendChild(el);
+      shieldElements[coords] = el;
+    }
+    const el = shieldElements[coords];
+    el.style.left = (px + fieldW / 2 - 8) + 'px';
+    el.style.top = (py - 2) + 'px';
+    el.style.display = '';
+  }
+
+  // Esconde escudos fora do viewport
+  for (const [coords, el] of Object.entries(shieldElements)) {
+    if (!seen.has(coords)) el.style.display = 'none';
+  }
+}
+
+function handleMapMouseMove(e) {
+  if (!mapViewport || !mapVillageData) return;
+
+  const { centerX, centerY, fieldW, fieldH, canvasLeft, canvasTop, canvasW, canvasH } = mapViewport;
+
+  // Mouse dentro do canvas?
+  const mx = e.clientX - canvasLeft;
+  const my = e.clientY - canvasTop;
+  if (mx < 0 || my < 0 || mx > canvasW || my > canvasH) {
+    if (mapTooltipEl) mapTooltipEl.style.display = 'none';
+    return;
+  }
+
+  // Calcula coordenada do grid
+  const gx = Math.floor((mx - canvasW / 2) / fieldW + centerX);
+  const gy = Math.floor((my - canvasH / 2) / fieldH + centerY);
+  const coordKey = `${gx}|${gy}`;
+
+  const v = mapVillageData.get(coordKey);
+  if (!v) {
+    if (mapTooltipEl) mapTooltipEl.style.display = 'none';
+    return;
+  }
+
+  // Mostra tooltip
+  const t = v.troops_total || {};
+  const own = v.troops_own || {};
+  const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
+
+  const units = ['spear','sword','axe','spy','light','heavy','ram','catapult','snob'];
+  const unitLabels = { spear:'Lanc', sword:'Espad', axe:'Vik', spy:'Bat', light:'Lev', heavy:'Pes', ram:'Ari', catapult:'Cat', snob:'Nob' };
+
+  let html = `<div style="font-weight:700;color:#f8c850;margin-bottom:4px">${v.village_name || coordKey}</div>`;
+  html += `<div style="font-size:10px;color:#b09878;margin-bottom:6px">${v.player_name} · ${coordKey}</div>`;
+  if (bunkered) html += `<div style="color:#4caf50;font-weight:700;font-size:10px;margin-bottom:4px">🛡️ BUNKADA</div>`;
+
+  html += '<table style="border-collapse:collapse;width:100%">';
+  html += '<tr style="border-bottom:1px solid #e8502020">';
+  for (const u of units) html += `<td style="padding:2px 4px;text-align:center;font-size:9px;color:#b09878">${unitLabels[u]}</td>`;
+  html += '</tr><tr>';
+  for (const u of units) {
+    const val = t[u] || 0;
+    html += `<td style="padding:2px 4px;text-align:center;font-size:11px;font-weight:600;color:${val > 0 ? '#f0e0c8' : '#4a4030'}">${val > 0 ? fmtK(val) : '0'}</td>`;
+  }
+  html += '</tr></table>';
+
+  mapTooltipEl.innerHTML = html;
+  mapTooltipEl.style.display = '';
+  mapTooltipEl.style.left = Math.min(e.clientX + 12, window.innerWidth - 340) + 'px';
+  mapTooltipEl.style.top = (e.clientY + 16) + 'px';
+}
+
+function fmtK(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace('.0', '') + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace('.0', '') + 'k';
+  return String(n);
+}
+
+function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); }
 if (document.readyState === 'loading') {
   // DOMContentLoaded é suficiente — não esperar por load (imagens/css)
   document.addEventListener('DOMContentLoaded', boot, { once: true });

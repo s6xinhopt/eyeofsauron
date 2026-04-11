@@ -47,4 +47,50 @@
       window.postMessage({ type: 'EOS_GROUPS_DATA', groups }, '*');
     }
   }
+  // ── Mapa: envia viewport do TWMap para o content.js ──
+  if (window.game_data && window.game_data.screen === 'map') {
+    function waitForTWMap() {
+      if (window.TWMap && window.TWMap.map && window.TWMap.map.scale) {
+        startMapBridge();
+      } else {
+        setTimeout(waitForTWMap, 300);
+      }
+    }
+
+    function startMapBridge() {
+      let lastState = '';
+      function postViewport() {
+        try {
+          const map = window.TWMap.map;
+          const pos = window.TWMap.pos || [500, 500];
+          const scale = map.scale || [53, 38];
+          const canvas = map.el || document.querySelector('#map canvas, canvas');
+          if (!canvas) return;
+          const rect = canvas.getBoundingClientRect();
+
+          const state = `${pos[0]},${pos[1]},${rect.left},${rect.top},${rect.width},${rect.height}`;
+          if (state === lastState) return;
+          lastState = state;
+
+          window.postMessage({
+            type: 'EOS_MAP_VIEWPORT',
+            centerX: pos[0],
+            centerY: pos[1],
+            fieldW: scale[0],
+            fieldH: scale[1],
+            canvasLeft: rect.left,
+            canvasTop: rect.top,
+            canvasW: rect.width,
+            canvasH: rect.height,
+            allyId: window.game_data.player.ally ? String(window.game_data.player.ally) : '0'
+          }, '*');
+        } catch (_) {}
+      }
+
+      setInterval(postViewport, 250);
+      postViewport();
+    }
+
+    waitForTWMap();
+  }
 })();
