@@ -1,14 +1,48 @@
 const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 let currentPlayer = null;
+let currentWorld = null;
+
+// ── Helpers para storage world-scoped ───────────────────────────────────────
+
+function wk(world, key) { return `eos.${world}.${key}`; }
+
+async function getWorldStorage(world, ...keys) {
+  const mapped = keys.map(k => wk(world, k));
+  const data = await chrome.storage.local.get(mapped);
+  const result = {};
+  for (const k of keys) {
+    result[k] = data[wk(world, k)] ?? null;
+  }
+  return result;
+}
+
+// Deteta o mundo ativo a partir das tabs do TW abertas
+async function detectWorld() {
+  const tabs = await chrome.tabs.query({ url: '*://*.tribalwars.com.pt/*', active: true, currentWindow: true });
+  if (tabs.length > 0) {
+    const hostname = new URL(tabs[0].url).hostname;
+    return hostname.split('.')[0];
+  }
+  // Fallback: qualquer tab TW aberta
+  const allTabs = await chrome.tabs.query({ url: '*://*.tribalwars.com.pt/*' });
+  if (allTabs.length > 0) {
+    const hostname = new URL(allTabs[0].url).hostname;
+    return hostname.split('.')[0];
+  }
+  // Último fallback: último mundo conhecido
+  const { eosLastWorld } = await chrome.storage.local.get('eosLastWorld');
+  return eosLastWorld || null;
+}
 
 // --- API helper (usa servidor autenticado, não Supabase direto) ---
 async function api(path, opts) {
-  const { eosToken } = await chrome.storage.local.get('eosToken');
-  if (!eosToken) throw new Error('Sem token');
+  if (!currentWorld) throw new Error('Sem mundo');
+  const { token } = await getWorldStorage(currentWorld, 'token');
+  if (!token) throw new Error('Sem token');
   const version = chrome.runtime.getManifest().version;
   const res = await fetch(`${EOS_SERVER}${path}`, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}`, 'X-EOS-Version': version, ...(opts?.headers || {}) },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-EOS-Version': version, ...(opts?.headers || {}) },
   });
   if (res.status === 426) throw new Error('VERSION_OUTDATED');
   if (res.status === 402) throw new Error('SUBSCRIPTION_INACTIVE');
@@ -20,16 +54,9 @@ async function api(path, opts) {
 (async function init() {
   showView('viewLoading');
 
-  const data = await chrome.storage.local.get([
-    'eosPlayerName', 'eosTribeName', 'eosWorld',
-    'webhookUrl', 'reportInterval'
-  ]);
+  currentWorld = await detectWorld();
 
-  // Preenche campos de config
-  if (data.webhookUrl)     document.getElementById('webhookUrl').value     = data.webhookUrl;
-  if (data.reportInterval) document.getElementById('reportInterval').value = data.reportInterval;
-
-  if (!data.eosPlayerName) {
+  if (!currentWorld) {
     const tabs = await chrome.tabs.query({ url: '*://*.tribalwars.com.pt/*' });
     if (tabs.length > 0) {
       showView('viewRefresh');
@@ -39,17 +66,34 @@ async function api(path, opts) {
     return;
   }
 
-  currentPlayer = { name: data.eosPlayerName, tribe: data.eosTribeName, world: data.eosWorld };
-  const tribeLabel = data.eosTribeName ? ` · ${data.eosTribeName}` : ' · (sem tribo)';
+  const wd = await getWorldStorage(currentWorld, 'playerName', 'tribeName');
+
+  // Preenche campos de config
+  const config = await chrome.storage.local.get(['webhookUrl', 'reportInterval']);
+  if (config.webhookUrl)     document.getElementById('webhookUrl').value     = config.webhookUrl;
+  if (config.reportInterval) document.getElementById('reportInterval').value = config.reportInterval;
+
+  if (!wd.playerName) {
+    const tabs = await chrome.tabs.query({ url: `*://${currentWorld}.tribalwars.com.pt/*` });
+    if (tabs.length > 0) {
+      showView('viewRefresh');
+    } else {
+      showView('viewNoGame');
+    }
+    return;
+  }
+
+  currentPlayer = { name: wd.playerName, tribe: wd.tribeName, world: currentWorld };
+  const tribeLabel = wd.tribeName ? ` · ${wd.tribeName}` : ' · (sem tribo)';
   document.getElementById('headerSub').textContent =
-    `${data.eosPlayerName} · ${(data.eosWorld || '').toUpperCase()}${tribeLabel}`;
+    `${wd.playerName} · ${currentWorld.toUpperCase()}${tribeLabel}`;
 
   try {
     const result = await api('/api/members');
 
     if (!result.myName) {
-      const localStatus = (await chrome.storage.local.get('eosStatus')).eosStatus;
-      if (localStatus === 'no_tribe') { showView('viewNoTribe'); }
+      const { status } = await getWorldStorage(currentWorld, 'status');
+      if (status === 'no_tribe') { showView('viewNoTribe'); }
       else { showView('viewPending'); }
       return;
     }
@@ -57,11 +101,14 @@ async function api(path, opts) {
     const me = result.members?.find(m => m.player_name === result.myName);
     if (!me) { showView('viewPending'); return; }
 
-    await chrome.storage.local.set({ eosStatus: 'approved', eosIsLeader: result.myRole === 'leader' });
+    await chrome.storage.local.set({
+      [wk(currentWorld, 'status')]: 'approved',
+      [wk(currentWorld, 'isLeader')]: result.myRole === 'leader',
+    });
 
     // Painel principal
     document.getElementById('tribeDisplay').textContent = result.tribeName || '—';
-    document.getElementById('worldDisplay').textContent = (result.world || '').toUpperCase();
+    document.getElementById('worldDisplay').textContent = currentWorld.toUpperCase();
 
     const isLeader = result.myRole === 'leader' || result.myRole === 'moderator';
     if (isLeader) {
@@ -202,7 +249,9 @@ sendBtn.addEventListener('click', async () => {
     setSendStatus('Webhook inválido.', 'err'); return;
   }
 
-  const tabs = await chrome.tabs.query({ url: '*://*.tribalwars.com.pt/*' });
+  if (!currentWorld) { setSendStatus('Mundo não detetado.', 'err'); return; }
+
+  const tabs = await chrome.tabs.query({ url: `*://${currentWorld}.tribalwars.com.pt/*` });
   if (tabs.length === 0) { setSendStatus('Abre o TribalWars primeiro!', 'err'); return; }
 
   const origin    = new URL(tabs[0].url).origin;

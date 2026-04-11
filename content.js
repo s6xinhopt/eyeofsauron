@@ -3,6 +3,31 @@
 
 const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 
+// ── Mundo atual (extraído do hostname, ex: "pt111") ─────────────────────────
+const CURRENT_WORLD = window.location.hostname.split('.')[0];
+
+function wk(key) { return `eos.${CURRENT_WORLD}.${key}`; }
+
+// Lê chaves world-scoped do storage
+async function getWorldStorage(...keys) {
+  const mapped = keys.map(k => wk(k));
+  const data = await chrome.storage.local.get(mapped);
+  const result = {};
+  for (const k of keys) {
+    result[k] = data[wk(k)] ?? null;
+  }
+  return result;
+}
+
+// Escreve chaves world-scoped no storage
+async function setWorldStorage(obj) {
+  const mapped = {};
+  for (const [k, v] of Object.entries(obj)) {
+    mapped[wk(k)] = v;
+  }
+  await chrome.storage.local.set(mapped);
+}
+
 // ── Utilitários ──────────────────────────────────────────────────────────────
 
 function isUnitsPage() {
@@ -79,10 +104,10 @@ function classifyVillages() {
     for (const u of OFFENSE_UNITS) offPop += (counts[u] || 0) * (POP_COST[u] || 0);
     for (const u of DEFENSE_UNITS) defPop += (counts[u] || 0) * (POP_COST[u] || 0);
 
-    if      (offPop >= 20000) result.full_nuke++;
-    else if (offPop >= 15000) result.semi_nuke++;
-    else if (defPop >= 20000) result.full_def++;
-    else if (defPop >= 15000) result.semi_def++;
+    if      (offPop >= 17000) result.full_nuke++;
+    else if (offPop >= 10000) result.semi_nuke++;
+    else if (defPop >= 17000) result.full_def++;
+    else if (defPop >= 10000) result.semi_def++;
     else                      result.other++;
   });
 
@@ -356,7 +381,7 @@ function injectEOSButton() {
   btn.style.cssText = `width:25px;height:25px;background-image:url('${chrome.runtime.getURL('background/eye_of_sauron.gif')}');background-size:cover;border-radius:4px;cursor:pointer;border:2px solid #c0a060;box-shadow:0 2px 8px rgba(0,0,0,0.6)`;
 
   btn.addEventListener('click', async () => {
-    const { eosToken, eosSubscription, eosTribeName, eosPlayerName } = await getStorage('eosToken', 'eosSubscription', 'eosTribeName', 'eosPlayerName');
+    const { token: eosToken, subscription: eosSubscription, tribeName: eosTribeName } = await getWorldStorage('token', 'subscription', 'tribeName');
     if (!eosToken) { alert('Ainda não autenticado. Aguarda uns segundos e tenta novamente.'); return; }
 
     // Se já está aberto, fecha
@@ -432,7 +457,7 @@ function waitForQuestlog() {
 // ── Notificação de pedido de tropas (aceitar/recusar) ───────────────────
 
 async function checkTroopConfirmation() {
-  const data = await getStorage('pendingTroopConfirm', 'pendingTroopConfirmGroupId', 'pendingTroopConfirmGroupName');
+  const data = await getWorldStorage('pendingTroopConfirm', 'pendingTroopConfirmGroupId', 'pendingTroopConfirmGroupName');
   if (!data.pendingTroopConfirm) return;
   if (document.getElementById('eos-troop-confirm')) return;
 
@@ -470,24 +495,22 @@ async function checkTroopConfirmation() {
   document.body.appendChild(bar);
 
   document.getElementById('eos-confirm-accept').addEventListener('click', async () => {
-    await chrome.storage.local.set({ pendingTroopConfirm: false });
+    await setWorldStorage({ pendingTroopConfirm: false });
     bar.remove();
-    const { eosWorld } = await getStorage('eosWorld');
-    if (!eosWorld) return;
-    chrome.storage.local.set({
+    await setWorldStorage({
       pendingTroopRequest: true,
       pendingTroopGroupId: data.pendingTroopConfirmGroupId || '0',
       pendingTroopGroupName: groupName
     });
     const villageMatch = window.location.href.match(/village=(\d+)/);
     const vid = villageMatch ? villageMatch[1] : '';
-    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `https://${eosWorld}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=overview_villages&mode=units`, active: false });
+    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=overview_villages&mode=units`, active: false });
   });
 
   document.getElementById('eos-confirm-refuse').addEventListener('click', async () => {
-    await chrome.storage.local.set({ pendingTroopConfirm: false });
+    await setWorldStorage({ pendingTroopConfirm: false });
     bar.remove();
-    const { eosToken } = await getStorage('eosToken');
+    const { token: eosToken } = await getWorldStorage('token');
     if (eosToken) {
       fetch(`${EOS_SERVER}/api/members`, {
         method: 'PATCH',
@@ -509,7 +532,7 @@ async function main() {
       const groups = extractTWGroups();
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
-        const { eosToken } = await getStorage('eosToken');
+        const { token: eosToken } = await getWorldStorage('token');
         if (eosToken) {
           fetch(`${EOS_SERVER}/api/tw-groups`, {
             method: 'POST',
@@ -528,12 +551,12 @@ async function main() {
   // Página de tropas (overview_villages&mode=units): lê agregado + por aldeia
   if (!isUnitsPage()) return;
 
-  const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
+  const data = await getWorldStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'token');
   if (!data.pendingTroopRequest) return;
 
   const groupId   = data.pendingTroopGroupId   || '0';
   const groupName = data.pendingTroopGroupName || 'Todos';
-  const token     = data.eosToken;
+  const token     = data.token;
 
   if (!token) return;
 
@@ -606,10 +629,10 @@ async function main() {
       let offPop = 0, defPop = 0;
       for (const u of OFFENSE_UNITS) offPop += (t[u] || 0) * (POP_COST[u] || 0);
       for (const u of DEFENSE_UNITS) defPop += (t[u] || 0) * (POP_COST[u] || 0);
-      if      (offPop >= 20000) classification.full_nuke++;
-      else if (offPop >= 15000) classification.semi_nuke++;
-      else if (defPop >= 20000) classification.full_def++;
-      else if (defPop >= 15000) classification.semi_def++;
+      if      (offPop >= 17000) classification.full_nuke++;
+      else if (offPop >= 10000) classification.semi_nuke++;
+      else if (defPop >= 17000) classification.full_def++;
+      else if (defPop >= 10000) classification.semi_def++;
       else                      classification.other++;
     }
 
@@ -639,12 +662,12 @@ async function main() {
       if (!res.ok) throw new Error(`Servidor: ${res.status}`);
     }
 
-    await chrome.storage.local.set({ pendingTroopRequest: false });
+    await setWorldStorage({ pendingTroopRequest: false });
     showOverlay(`✔ ${villages.length} aldeias guardadas!`, 'ok');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
 
   } catch (err) {
-    await chrome.storage.local.set({ pendingTroopRequest: false });
+    await setWorldStorage({ pendingTroopRequest: false });
     showOverlay('❌ ' + err.message, 'error');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
   }
@@ -737,9 +760,9 @@ function showSubscriptionOverlay(sub, tribeName) {
   if (subBtn) {
     subBtn.addEventListener('click', async () => {
       overlay.remove();
-      const { eosPlayerName, eosWorld, eosTribeName } = await getStorage('eosPlayerName', 'eosWorld', 'eosTribeName');
+      const { playerName: eosPlayerName, tribeName: eosTribeName } = await getWorldStorage('playerName', 'tribeName');
       const tribe = encodeURIComponent(eosTribeName || tribeName);
-      const world = encodeURIComponent(eosWorld || '');
+      const world = encodeURIComponent(CURRENT_WORLD);
       const player = encodeURIComponent(eosPlayerName || '');
       const url = `${EOS_SERVER}/subscribe?tribe=${tribe}&world=${world}&player=${player}`;
 
@@ -837,8 +860,8 @@ async function initMapOverlay() {
   if (!isMapPage()) return;
   injectShieldStyles();
 
-  const { eosToken, eosWorld } = await getStorage('eosToken', 'eosWorld');
-  if (!eosToken || !eosWorld) return;
+  const { token: eosToken } = await getWorldStorage('token');
+  if (!eosToken) return;
 
   // Carrega definições guardadas
   const { eosBunkTypes, eosMapEnabled: savedEnabled } = await getStorage('eosBunkTypes', 'eosMapEnabled');
@@ -1300,29 +1323,28 @@ window.addEventListener('message', (event) => {
   const iframeOrigin = EOS_SERVER.replace(/\/$/, '');
   if (event.origin === iframeOrigin) {
     if (event.data.type === 'EOS_SYNC_SCHEDULES') {
-      getStorage('eosToken').then(({ eosToken }) => {
-        if (eosToken) chrome.runtime.sendMessage({ type: 'SYNC_SCHEDULES', token: eosToken });
+      getWorldStorage('token').then(({ token }) => {
+        if (token) chrome.runtime.sendMessage({ type: 'SYNC_SCHEDULES', token, world: CURRENT_WORLD });
       });
       return;
     }
 
     if (event.data.type === 'EOS_EXTRACT_GROUPS_REQUEST') {
-      const world = window.location.hostname.split('.')[0];
-      const url = `https://${world}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;
+      const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;
       chrome.storage.local.set({ pendingGroupsExtract: true });
       chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
       return;
     }
 
     if (event.data.type === 'EOS_FORCE_REPORT') {
-      getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
-        if (!eosToken || !eosWorld) return;
+      getWorldStorage('token').then(({ token }) => {
+        if (!token) return;
         const groupId   = event.data.groupId   || '0';
         const groupName = event.data.groupName || 'Todos';
-        chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
+        setWorldStorage({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
         const villageMatch = window.location.href.match(/village=(\d+)/);
         const vid = villageMatch ? villageMatch[1] : '';
-        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=overview_villages&mode=units`;
+        const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=overview_villages&mode=units`;
         chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
       });
       return;
@@ -1340,7 +1362,7 @@ window.addEventListener('message', (event) => {
     // Envia para background que chama o servidor
     chrome.runtime.sendMessage({
       type: 'PLAYER_SEEN', playerName, tribeName, tribeTag: tribeTag || '', allyId, hasTribe,
-      world: window.location.hostname.split('.')[0]
+      world: CURRENT_WORLD
     });
   }
 
@@ -1357,7 +1379,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type !== 'EOS_TRIGGER_REPORT') return;
   if (!isUnitsPage()) return;
   // Força o flag no storage e relança o fluxo principal
-  chrome.storage.local.set({
+  setWorldStorage({
     pendingTroopRequest:   true,
     pendingTroopGroupId:   msg.groupId   || '0',
     pendingTroopGroupName: msg.groupName || 'Todos'
