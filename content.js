@@ -663,39 +663,42 @@ async function initMapOverlay() {
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
 
-  // Escuta viewport do page_reader (MAIN world)
+  // Escuta mensagens do bridge MAIN world
   window.addEventListener('message', (e) => {
-    if (!e.data || e.data.type !== 'EOS_MAP_VIEWPORT') return;
-    mapViewport = e.data;
-    updateMapOverlay();
+    if (!e.data) return;
+    if (e.data.type === 'EOS_MAP_VIEWPORT') {
+      mapViewport = e.data;
+    }
+    if (e.data.type === 'EOS_MAP_PIXELS') {
+      placeShields(e.data.positions || {});
+    }
+    if (e.data.type === 'EOS_MAP_BRIDGE_READY') {
+      requestShieldPositions();
+    }
   });
 
-  // Injeta bridge do TWMap directamente no MAIN world (não depende do page_reader)
+  // Injeta bridge: pede pixelByCoord para cada aldeia bunkada
+  // O content.js envia as coords, o MAIN world devolve as posições em pixels
   const bridgeScript = document.createElement('script');
   bridgeScript.textContent = `
     (function() {
       var attempts = 0;
       function tryStart() {
         attempts++;
-        if (window.TWMap && window.TWMap.map && window.TWMap.map.scale && document.getElementById('map')) {
-          var lastPosX = -1, lastPosY = -1;
-          setInterval(function() {
-            try {
-              var pos = window.TWMap.pos || [500,500];
-              if (pos[0] === lastPosX && pos[1] === lastPosY) return;
-              lastPosX = pos[0]; lastPosY = pos[1];
-              var scale = window.TWMap.map.scale || [53,38];
-              var rect = document.getElementById('map').getBoundingClientRect();
-              if (rect.width === 0) return;
-              window.postMessage({
-                type:'EOS_MAP_VIEWPORT',
-                centerX:pos[0],centerY:pos[1],
-                fieldW:scale[0],fieldH:scale[1],
-                canvasLeft:rect.left,canvasTop:rect.top,
-                canvasW:rect.width,canvasH:rect.height
-              },'*');
-            } catch(e){}
-          }, 100);
+        if (window.TWMap && window.TWMap.map && window.TWMap.map.pixelByCoord) {
+          window.addEventListener('message', function(e) {
+            if (!e.data || e.data.type !== 'EOS_MAP_GET_PIXELS') return;
+            var results = {};
+            var coords = e.data.coords || [];
+            for (var i = 0; i < coords.length; i++) {
+              var parts = coords[i].split('|');
+              var px = window.TWMap.map.pixelByCoord(parseInt(parts[0]), parseInt(parts[1]));
+              if (px) results[coords[i]] = { x: px[0], y: px[1] };
+            }
+            window.postMessage({ type: 'EOS_MAP_PIXELS', positions: results }, '*');
+          });
+          // Sinaliza que está pronto
+          window.postMessage({ type: 'EOS_MAP_BRIDGE_READY' }, '*');
         } else if (attempts < 150) {
           setTimeout(tryStart, 200);
         }
@@ -732,53 +735,46 @@ async function fetchMapData(token) {
         mapVillageData.set(v.village_coords, v);
       }
     }
-    if (mapViewport) updateMapOverlay();
+    requestShieldPositions();
   } catch (_) {}
 }
 
-function updateMapOverlay() {
-  if (!mapVillageData || !mapViewport) return;
-
-  const { centerX, centerY, fieldW, fieldH, canvasW, canvasH } = mapViewport;
-
-  // Overlay dentro de #map (viewport fixo), clip ao viewport
-  if (!mapOverlayEl) {
-    const mapRoot = document.getElementById('map');
-    if (!mapRoot) return;
-    mapOverlayEl = document.createElement('div');
-    mapOverlayEl.id = 'eos-map-shield-overlay';
-    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100;overflow:hidden';
-    mapRoot.style.position = 'relative';
-    mapRoot.appendChild(mapOverlayEl);
-  }
-
-  // Recalcula posições de todos os escudos bunkados
-  const halfW = canvasW / 2;
-  const halfH = canvasH / 2;
-
+function requestShieldPositions() {
+  if (!mapVillageData) return;
+  // Envia coordenadas de aldeias bunkadas para o MAIN world calcular pixels
+  const bunkeredCoords = [];
   for (const [coords, v] of mapVillageData) {
     const t = v.troops_total || {};
+    if ((t.spear || 0) >= 10000 && (t.sword || 0) >= 10000) {
+      bunkeredCoords.push(coords);
+    }
+  }
+  if (bunkeredCoords.length > 0) {
+    window.postMessage({ type: 'EOS_MAP_GET_PIXELS', coords: bunkeredCoords }, '*');
+  }
+}
+
+function placeShields(positions) {
+  if (!mapVillageData) return;
+
+  // Cria overlay dentro de #map_container (move-se com o mapa)
+  if (!mapOverlayEl) {
+    const container = document.getElementById('map_container');
+    if (!container) return;
+    mapOverlayEl = document.createElement('div');
+    mapOverlayEl.id = 'eos-map-shield-overlay';
+    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;pointer-events:none;z-index:100';
+    container.appendChild(mapOverlayEl);
+  }
+
+  for (const [coords, pos] of Object.entries(positions)) {
+    const v = mapVillageData.get(coords);
+    if (!v) continue;
+
+    const t = v.troops_total || {};
     const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
+    if (!bunkered) continue;
 
-    if (!bunkered) {
-      if (shieldElements[coords]) { shieldElements[coords].style.display = 'none'; }
-      continue;
-    }
-
-    const [vx, vy] = coords.split('|').map(Number);
-    if (isNaN(vx) || isNaN(vy)) continue;
-
-    // Posição relativa ao centro do viewport
-    const px = (vx - centerX) * fieldW + halfW;
-    const py = (vy - centerY) * fieldH + halfH;
-
-    // Fora do viewport? Esconde
-    if (px < -20 || py < -20 || px > canvasW + 20 || py > canvasH + 20) {
-      if (shieldElements[coords]) shieldElements[coords].style.display = 'none';
-      continue;
-    }
-
-    // Cria ou mostra escudo
     if (!shieldElements[coords]) {
       const el = document.createElement('img');
       el.src = SHIELD_SVG;
@@ -786,10 +782,9 @@ function updateMapOverlay() {
       mapOverlayEl.appendChild(el);
       shieldElements[coords] = el;
     }
-    const el = shieldElements[coords];
-    el.style.left = (px + fieldW / 2 - 9) + 'px';
-    el.style.top = (py + fieldH / 2 - 9) + 'px';
-    el.style.display = '';
+    // pixelByCoord devolve a posição absoluta no container
+    shieldElements[coords].style.left = (pos.x + 18) + 'px';
+    shieldElements[coords].style.top = (pos.y - 2) + 'px';
   }
 }
 
