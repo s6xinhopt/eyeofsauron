@@ -1,4 +1,4 @@
-const EOS_SERVER = 'https://eos-server-git-beta-s6xinhopts-projects.vercel.app';
+const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 let currentPlayer = null;
 
 // --- API helper (usa servidor autenticado, não Supabase direto) ---

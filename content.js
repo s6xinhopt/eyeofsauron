@@ -1,7 +1,7 @@
 // content.js — cliente mínimo
 // Só lê o DOM do TW e comunica com o servidor. Sem lógica de negócio.
 
-const EOS_SERVER = 'https://eos-server-git-beta-s6xinhopts-projects.vercel.app';
+const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 
 // ── Utilitários ──────────────────────────────────────────────────────────────
 

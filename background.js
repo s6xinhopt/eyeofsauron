@@ -1,7 +1,7 @@
 // background.js — service worker mínimo
 // Gere alarmes para auto-update e comunica com o servidor
 
-const EOS_SERVER = 'https://eos-server-git-beta-s6xinhopts-projects.vercel.app';
+const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 
 // ── Autenticação: regista jogador e guarda token ─────────────────────────────
 
