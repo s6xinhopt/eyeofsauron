@@ -702,21 +702,15 @@ function placeShields() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
   const mapRect = mapEl.getBoundingClientRect();
-  const scale = [53, 38]; // fieldW, fieldH
+  const scale = [53, 38];
 
-  // Precisa do TWMap.pos — obtemos via page_reader ou estimamos
-  // Usa mapViewport se disponível, senão tenta ler do DOM
-  let centerX = mapViewport?.centerX;
-  let centerY = mapViewport?.centerY;
-
-  // Fallback: lê a posição do hash da URL (formato: #x;y)
-  if (!centerX) {
-    const hash = window.location.hash.replace('#', '');
-    const parts = hash.split(';');
-    if (parts.length === 2) {
-      centerX = parseInt(parts[0]) || 0;
-      centerY = parseInt(parts[1]) || 0;
-    }
+  // Lê centro do hash da URL (#x;y)
+  let centerX = 0, centerY = 0;
+  const hash = window.location.hash.replace('#', '');
+  const parts = hash.split(';');
+  if (parts.length === 2) {
+    centerX = parseInt(parts[0]) || 0;
+    centerY = parseInt(parts[1]) || 0;
   }
   if (!centerX) return;
 
@@ -728,15 +722,14 @@ function placeShields() {
   }
   if (bunkeredSet.size === 0) return;
 
-  // Remove escudos antigos que já não são válidos
-  document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
-  shieldElements = {};
-
-  // Percorre todas as imgs de aldeia visíveis
+  // Percorre todas as imgs de aldeia — encontra novas que precisam de escudo
   const imgs = mapEl.querySelectorAll('img[src*="n_v"]');
   for (const img of imgs) {
+    // Skip se já tem escudo como próximo sibling
+    if (img.nextElementSibling && img.nextElementSibling.dataset?.eosShield) continue;
+
     const r = img.getBoundingClientRect();
-    // Fora do viewport?
+    // Fora do viewport — skip
     if (r.right < mapRect.left || r.bottom < mapRect.top || r.left > mapRect.right || r.top > mapRect.bottom) continue;
 
     // Calcula coordenadas do mundo
@@ -748,22 +741,22 @@ function placeShields() {
 
     if (!bunkeredSet.has(coordKey)) continue;
 
-    // Coloca escudo no mesmo parent (sector) que a img
+    // Coloca escudo imediatamente após a img no mesmo sector
+    // Usa a mesma posição left/top da img — move-se com o sector
     const shield = document.createElement('img');
     shield.src = SHIELD_SVG;
     shield.dataset.eosShield = coordKey;
     const imgLeft = parseFloat(img.style.left) || 0;
     const imgTop = parseFloat(img.style.top) || 0;
     shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${imgLeft + 18}px;top:${imgTop - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
-    img.parentElement.appendChild(shield);
-    shieldElements[coordKey] = shield;
+    // Insere logo depois da img
+    img.insertAdjacentElement('afterend', shield);
   }
 }
 
 function startShieldTracking() {
-  // Re-scan a cada 500ms para apanhar pan e novos sectores
-  // O hash da URL atualiza quando o mapa se move (#x;y)
-  setInterval(placeShields, 500);
+  // Scan a cada 2s para novos sectores carregados pelo pan
+  setInterval(placeShields, 2000);
 }
 
 function handleMapMouseMove(e) {
