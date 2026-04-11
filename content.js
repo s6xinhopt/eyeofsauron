@@ -156,15 +156,16 @@ function readPerVillageTroops() {
     if (cells.length < 3) continue;
 
     // Row com link de aldeia = header de aldeia + "as suas próprias"
-    const villageLink = row.querySelector('a[href*="screen=info_village"], a[href*="village="]');
-    if (villageLink) {
-      const href = villageLink.getAttribute('href') || '';
+    // O link da aldeia está sempre na PRIMEIRA célula da row
+    const firstCellLink = cells[0]?.querySelector('a[href*="screen=info_village"], a[href*="village="]');
+    if (firstCellLink) {
+      const href = firstCellLink.getAttribute('href') || '';
       const idMatch = href.match(/village=(\d+)/) || href.match(/id=(\d+)/);
       if (idMatch) {
         if (currentVillage && (currentVillage.troops_total || currentVillage.troops_own)) {
           villages.push(currentVillage);
         }
-        const text = (villageLink.textContent || '').trim();
+        const text = (firstCellLink.textContent || '').trim();
         const coordMatch = text.match(/\((\d+\|\d+)\)/);
         currentVillage = {
           village_id: idMatch[1],
