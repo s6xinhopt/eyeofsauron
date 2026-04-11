@@ -968,33 +968,6 @@ function placeShields() {
 
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
-  const mapRect = mapEl.getBoundingClientRect();
-  const fieldW = 53, fieldH = 38;
-
-  // Calibração: encontra uma img de aldeia visível e usa-a como referência
-  // Isto é mais preciso que o centro do TWMap (pode ter delay)
-  const villageSelector = 'img[src*="/v3.png"], img[src*="/v4.png"], img[src*="/v5.png"], img[src*="/v6.png"], img[src*="/v1.png"], img[src*="/v2.png"], img[src*="n_v"]';
-  const center = getMapCenter();
-  if (!center) return;
-
-  let refX = center[0], refY = center[1];
-  let refPixelX = mapRect.width / 2, refPixelY = mapRect.height / 2;
-
-  // Tenta calibrar com uma aldeia real visível
-  const refImgs = mapEl.querySelectorAll(villageSelector);
-  for (const img of refImgs) {
-    const r = img.getBoundingClientRect();
-    if (r.left < mapRect.left || r.top < mapRect.top || r.right > mapRect.right || r.bottom > mapRect.bottom) continue;
-    // Calcula coord desta aldeia
-    const imgVx = Math.round((r.left - mapRect.left) / fieldW + center[0] - mapRect.width / fieldW / 2);
-    const imgVy = Math.round((r.top - mapRect.top) / fieldH + center[1] - mapRect.height / fieldH / 2);
-    // Usa esta como referência
-    refX = imgVx;
-    refY = imgVy;
-    refPixelX = r.left - mapRect.left;
-    refPixelY = r.top - mapRect.top;
-    break;
-  }
 
   // Classifica aldeias por bunk type
   const bunkeredMap = new Map();
@@ -1004,34 +977,34 @@ function placeShields() {
   }
   if (bunkeredMap.size === 0) return;
 
-  // Overlay fixo sobre o #map
-  if (!mapOverlayEl) {
-    mapOverlayEl = document.createElement('div');
-    mapOverlayEl.id = 'eos-map-shield-overlay';
-    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;overflow:hidden';
-    mapEl.style.position = 'relative';
-    mapEl.appendChild(mapOverlayEl);
-  }
-  mapOverlayEl.textContent = '';
+  // Lê mapeamento coord→id do page_reader
+  const villageMapStr = mapEl.getAttribute('data-eos-villages');
+  if (!villageMapStr) return;
+  let villageIds;
+  try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
+
+  // Limpa escudos antigos
+  document.querySelectorAll('.eos-shield-icon').forEach(el => el.remove());
   shieldElements = {};
 
+  // coord → TWMap.villages[id] → #map_village_${id} → posiciona escudo
   for (const [coordKey, bt] of bunkeredMap) {
-    const [vx, vy] = coordKey.split('|').map(Number);
-    if (isNaN(vx) || isNaN(vy)) continue;
+    const vid = villageIds[coordKey];
+    if (!vid) continue;
 
-    // Posição relativa ao ponto de referência calibrado
-    const px = refPixelX + (vx - refX) * fieldW;
-    const py = refPixelY + (vy - refY) * fieldH;
+    const domVillage = document.getElementById('map_village_' + vid);
+    if (!domVillage) continue;
 
-    // Fora do viewport?
-    if (px < -20 || py < -20 || px > mapRect.width + 20 || py > mapRect.height + 20) continue;
+    const top = parseInt(domVillage.style.top, 10) || 0;
+    const left = parseInt(domVillage.style.left, 10) || 0;
 
     const shield = document.createElement('img');
     shield.src = makeShieldSvg(bt.color);
     shield.dataset.eosShield = coordKey;
     shield.title = bt.name + ' (' + coordKey + ')';
-    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;left:${px}px;top:${py}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
-    mapOverlayEl.appendChild(shield);
+    shield.className = 'eos-shield-icon';
+    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:20;left:${left + 18}px;top:${top - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
+    domVillage.parentNode.insertBefore(shield, domVillage);
     shieldElements[coordKey] = shield;
   }
 }
