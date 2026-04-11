@@ -1041,30 +1041,35 @@ function startShieldTracking() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
-  // Detecta quando o mapa se move — limpa escudos e recria depois de estabilizar
   let lastCx = 0, lastCy = 0;
   let redrawTimer = null;
+  let isMoving = false;
 
+  // Detecta movimento — esconde escudos durante o drag, recria quando estabiliza
   setInterval(() => {
     const cx = parseInt(mapEl.getAttribute('data-eos-cx')) || 0;
     const cy = parseInt(mapEl.getAttribute('data-eos-cy')) || 0;
-    if (Math.abs(cx - lastCx) > 0 || Math.abs(cy - lastCy) > 0) {
+    if (cx !== lastCx || cy !== lastCy) {
       lastCx = cx; lastCy = cy;
-      // Agenda recriação dos escudos (debounce)
+      isMoving = true;
+      // Esconde escudos durante o movimento
+      document.querySelectorAll('[data-eos-shield]').forEach(el => el.style.display = 'none');
+      // Recria quando estabilizar
       if (redrawTimer) clearTimeout(redrawTimer);
       redrawTimer = setTimeout(() => {
+        isMoving = false;
         document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
         shieldElements = {};
         placeShields();
-      }, 500);
+      }, 400);
     }
-  }, 200);
+  }, 100);
 
   // Primeiro render
   placeShields();
 
-  // Fallback periódico
-  setInterval(placeShields, 5000);
+  // Fallback periódico (só se não está a mover)
+  setInterval(() => { if (!isMoving) placeShields(); }, 5000);
 }
 
 function handleMapMouseMove(e) {
