@@ -291,7 +291,7 @@ function extractTWGroups() {
 
 // ── Overlay ──────────────────────────────────────────────────────────────────
 
-function showOverlay(msg, type = 'info') {
+function showOverlay(msg, type = 'info', progress = -1) {
   let el = document.getElementById('eos-overlay');
   if (!el) {
     el = document.createElement('div');
@@ -302,8 +302,23 @@ function showOverlay(msg, type = 'info') {
   const color = type==='error'?'#f44336':type==='ok'?'#4caf50':'#c0a060';
   el.textContent = '';
   const inner = document.createElement('div');
-  inner.style.cssText = `background:#1a1a2e;border:2px solid ${color};border-radius:8px;padding:24px 36px;text-align:center;color:${color};font-size:15px;font-weight:bold`;
+  inner.style.cssText = `background:#1a1a2e;border:2px solid ${color};border-radius:8px;padding:24px 36px;text-align:center;color:${color};font-size:15px;font-weight:bold;min-width:280px`;
   inner.textContent = msg;
+
+  // Barra de progresso
+  if (progress >= 0) {
+    const barBg = document.createElement('div');
+    barBg.style.cssText = 'margin-top:14px;height:8px;background:#0a0a14;border-radius:4px;overflow:hidden;border:1px solid #2a2a3a';
+    const barFill = document.createElement('div');
+    barFill.style.cssText = `height:100%;border-radius:4px;transition:width .3s ease;width:${Math.min(progress, 100)}%;background:linear-gradient(90deg,#e87830,#f0a030);box-shadow:0 0 8px #e8783060`;
+    barBg.appendChild(barFill);
+    inner.appendChild(barBg);
+    const pct = document.createElement('div');
+    pct.style.cssText = 'margin-top:6px;font-size:11px;color:#908070;font-weight:400';
+    pct.textContent = `${Math.round(progress)}%`;
+    inner.appendChild(pct);
+  }
+
   el.appendChild(inner);
 }
 
@@ -598,19 +613,20 @@ async function main() {
   }
   sessionStorage.removeItem('eos_pagination_clicked');
 
-  showOverlay('⚔️ A aguardar tabela...');
+  showOverlay('⚔️ A aguardar tabela...', 'info', 0);
 
   try {
     await waitForOverviewTable();
-    showOverlay('⚔️ A ler aldeias...');
+    showOverlay('⚔️ A ler aldeias...', 'info', 5);
 
     // Leitura única com progresso
     const villages = readPerVillageTroops((current, total) => {
-      showOverlay(`⚔️ A ler aldeias ${current}/${total}`);
+      const pct = 5 + (current / total) * 55; // 5% → 60%
+      showOverlay(`⚔️ A ler aldeias ${current}/${total}`, 'info', pct);
     });
     if (!villages || !villages.length) throw new Error('Não foi possível ler a tabela de tropas.');
 
-    showOverlay(`⚔️ A calcular totais (${villages.length} aldeias)...`);
+    showOverlay(`⚔️ A calcular totais (${villages.length} aldeias)...`, 'info', 65);
 
     // Deriva totais agregados (apenas tropas próprias, nunca fallback para total)
     const troops = {};
@@ -636,32 +652,30 @@ async function main() {
       else                      classification.other++;
     }
 
-    showOverlay(`⚔️ A enviar dados (${villages.length} aldeias)...`);
-
-    // Envia agregado + por aldeia em paralelo
     const ver = chrome.runtime.getManifest().version;
     const hdrs = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-EOS-Version': ver };
-    const promises = [];
 
+    // Enviar report agregado (70% → 85%)
     if (Object.keys(troops).length > 0) {
-      promises.push(fetch(`${EOS_SERVER}/api/report`, {
+      showOverlay(`⚔️ A enviar tropas agregadas...`, 'info', 70);
+      const res = await fetch(`${EOS_SERVER}/api/report`, {
         method: 'POST', headers: hdrs,
         body: JSON.stringify({ troops, classification, groupId, groupName })
-      }));
-    }
-
-    if (villages.length > 0) {
-      promises.push(fetch(`${EOS_SERVER}/api/village-troops`, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify({ villages })
-      }));
-    }
-
-    const results = await Promise.all(promises);
-    for (const res of results) {
+      });
       if (!res.ok) throw new Error(`Servidor: ${res.status}`);
     }
 
+    // Enviar aldeias (85% → 98%)
+    if (villages.length > 0) {
+      showOverlay(`⚔️ A enviar ${villages.length} aldeias...`, 'info', 85);
+      const res = await fetch(`${EOS_SERVER}/api/village-troops`, {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ villages })
+      });
+      if (!res.ok) throw new Error(`Servidor: ${res.status}`);
+    }
+
+    showOverlay(`⚔️ A finalizar...`, 'info', 100);
     await setWorldStorage({ pendingTroopRequest: false });
     showOverlay(`✔ ${villages.length} aldeias guardadas!`, 'ok');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
