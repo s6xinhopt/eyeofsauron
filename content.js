@@ -983,32 +983,57 @@ function placeShields() {
   }
   if (bunkeredMap.size === 0) return;
 
-  // Percorre todas as imgs de aldeia visíveis
-  const imgs = mapEl.querySelectorAll('img[src*="/v3.png"], img[src*="/v4.png"], img[src*="/v5.png"], img[src*="/v6.png"], img[src*="/v1.png"], img[src*="/v2.png"], img[src*="n_v"]');
-  for (const img of imgs) {
-    // Skip se já tem escudo
-    if (img.nextElementSibling && img.nextElementSibling.dataset?.eosShield) continue;
+  // Para cada aldeia bunkada, calcula onde deveria estar no ecrã
+  // e encontra o sector + posição local correspondente
+  const [cx, cy] = center;
+  const halfW = mapRect.width / 2;
+  const halfH = mapRect.height / 2;
 
-    // Calcula coordenada usando a posição em pixels da img no ecrã
-    const r = img.getBoundingClientRect();
-    if (r.right < mapRect.left || r.bottom < mapRect.top || r.left > mapRect.right || r.top > mapRect.bottom) continue;
+  // Percorre sectores no map_container
+  const container = document.getElementById('map_container');
+  if (!container) return;
 
-    const iL = parseFloat(img.style.left) || 0;
-    const iT = parseFloat(img.style.top) || 0;
+  for (const [coordKey, bt] of bunkeredMap) {
+    if (shieldElements[coordKey]) continue; // Já tem escudo
 
-    const vx = Math.floor((r.left - mapRect.left + fieldW * 0.4) / fieldW + center[0] - mapRect.width / fieldW / 2);
-    const vy = Math.floor((r.top - mapRect.top + fieldH * 0.4) / fieldH + center[1] - mapRect.height / fieldH / 2);
-    const coordKey = vx + '|' + vy;
+    const [vx, vy] = coordKey.split('|').map(Number);
+    if (isNaN(vx) || isNaN(vy)) continue;
 
-    const bt = bunkeredMap.get(coordKey);
-    if (!bt) continue;
+    // Posição esperada no ecrã (relativa ao #map)
+    const screenX = (vx - cx) * fieldW + halfW;
+    const screenY = (vy - cy) * fieldH + halfH;
+
+    // Fora do viewport?
+    if (screenX < -fieldW || screenY < -fieldH || screenX > mapRect.width + fieldW || screenY > mapRect.height + fieldH) continue;
+
+    // Posição absoluta no ecrã
+    const absScreenX = screenX + mapRect.left;
+    const absScreenY = screenY + mapRect.top;
+
+    // Encontra o sector que contém este ponto
+    let targetSector = null;
+    let localX = 0, localY = 0;
+    for (const sec of container.children) {
+      if (sec.tagName !== 'DIV') continue;
+      const sr = sec.getBoundingClientRect();
+      if (absScreenX >= sr.left && absScreenX < sr.right && absScreenY >= sr.top && absScreenY < sr.bottom) {
+        targetSector = sec;
+        // Posição local dentro do sector (snapped ao grid)
+        localX = Math.round((absScreenX - sr.left) / fieldW) * fieldW;
+        localY = Math.round((absScreenY - sr.top) / fieldH) * fieldH;
+        break;
+      }
+    }
+
+    if (!targetSector) continue;
 
     const shield = document.createElement('img');
     shield.src = makeShieldSvg(bt.color);
     shield.dataset.eosShield = coordKey;
     shield.title = bt.name + ' (' + coordKey + ')';
-    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${iL + 18}px;top:${iT - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
-    img.insertAdjacentElement('afterend', shield);
+    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:12;left:${localX + 18}px;top:${localY - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
+    targetSector.appendChild(shield);
+    shieldElements[coordKey] = shield;
   }
 }
 
