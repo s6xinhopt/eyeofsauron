@@ -8,7 +8,7 @@ const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 async function handlePlayerSeen({ playerName, tribeName, allyId, hasTribe, world }) {
   if (!playerName || !world) return;
 
-  await chrome.storage.local.set({ eosPlayerName: playerName, eosWorld: world });
+  await chrome.storage.local.set({ eosPlayerName: playerName, eosWorld: world, eosTribeName: tribeName || '' });
 
   try {
     const res = await fetch(`${EOS_SERVER}/api/auth`, {
