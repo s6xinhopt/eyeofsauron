@@ -751,7 +751,7 @@ function updateMapOverlay() {
   if (!mapOverlayEl) {
     mapOverlayEl = document.createElement('div');
     mapOverlayEl.id = 'eos-map-shield-overlay';
-    mapOverlayEl.style.cssText = 'position:fixed;pointer-events:none;z-index:10;overflow:hidden';
+    mapOverlayEl.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;overflow:visible';
     document.body.appendChild(mapOverlayEl);
   }
   mapOverlayEl.style.left = canvasLeft + 'px';
@@ -772,7 +772,7 @@ function updateMapOverlay() {
     const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
     if (!bunkered) continue;
 
-    // Calcula posição em pixels relativa ao canvas
+    // TWMap.pos = centro do viewport. Pixel relativo ao overlay:
     const px = (vx - centerX) * fieldW + canvasW / 2;
     const py = (vy - centerY) * fieldH + canvasH / 2;
 
@@ -785,7 +785,7 @@ function updateMapOverlay() {
     if (!shieldElements[coords]) {
       const el = document.createElement('img');
       el.src = SHIELD_SVG;
-      el.style.cssText = 'position:absolute;width:16px;height:16px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.6))';
+      el.style.cssText = 'position:absolute;width:20px;height:20px;pointer-events:none;filter:drop-shadow(0 0 4px rgba(76,175,80,0.8))';
       mapOverlayEl.appendChild(el);
       shieldElements[coords] = el;
     }
