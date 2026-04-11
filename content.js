@@ -1057,11 +1057,19 @@ function startShieldTracking() {
       // Recria quando estabilizar
       if (redrawTimer) clearTimeout(redrawTimer);
       redrawTimer = setTimeout(() => {
-        isMoving = false;
-        document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
-        shieldElements = {};
-        placeShields();
-      }, 400);
+        // Verifica se realmente estabilizou (lê 2x com intervalo)
+        const cx1 = mapEl.getAttribute('data-eos-cx');
+        const cy1 = mapEl.getAttribute('data-eos-cy');
+        setTimeout(() => {
+          const cx2 = mapEl.getAttribute('data-eos-cx');
+          const cy2 = mapEl.getAttribute('data-eos-cy');
+          if (cx1 !== cx2 || cy1 !== cy2) return; // Ainda a mover
+          isMoving = false;
+          document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+          shieldElements = {};
+          placeShields();
+        }, 200);
+      }, 500);
     }
   }, 100);
 
