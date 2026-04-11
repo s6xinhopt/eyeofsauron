@@ -731,9 +731,9 @@ function injectMapSettingsButton() {
     btn.id = 'eos-map-settings-btn';
     btn.title = 'Eye of Sauron - Definições do Mapa';
     btn.style.cssText = `position:absolute;top:4px;right:4px;width:28px;height:28px;z-index:99999;cursor:pointer;
-      background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;
+      background:linear-gradient(135deg,#4a3828,#382818);border:1px solid #e8783050;border-radius:6px;
       display:flex;align-items:center;justify-content:center;
-      box-shadow:0 2px 8px rgba(0,0,0,0.5);transition:all .15s`;
+      box-shadow:0 2px 8px rgba(0,0,0,0.4);transition:all .15s`;
     btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8a030" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
     btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.1)'; });
     btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#e8502040'; btn.style.transform = ''; });
