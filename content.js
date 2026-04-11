@@ -699,13 +699,28 @@ async function fetchMapData(token) {
 function placeShields() {
   if (!mapVillageData || mapVillageData.size === 0) return;
 
-  const container = document.getElementById('map_container');
-  if (!container) return;
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return;
+  const mapRect = mapEl.getBoundingClientRect();
+  const scale = [53, 38]; // fieldW, fieldH
 
-  const fieldW = 53;
-  const fieldH = 38;
+  // Precisa do TWMap.pos — obtemos via page_reader ou estimamos
+  // Usa mapViewport se disponível, senão tenta ler do DOM
+  let centerX = mapViewport?.centerX;
+  let centerY = mapViewport?.centerY;
 
-  // Bunkered coords set para lookup rápido
+  // Fallback: lê a posição de TWMap.pos do URL ou input do mapa
+  if (!centerX) {
+    const xInput = document.querySelector('#map_coord_x, input[name="x"]');
+    const yInput = document.querySelector('#map_coord_y, input[name="y"]');
+    if (xInput && yInput) {
+      centerX = parseInt(xInput.value) || 0;
+      centerY = parseInt(yInput.value) || 0;
+    }
+  }
+  if (!centerX) return;
+
+  // Bunkered coords set
   const bunkeredSet = new Set();
   for (const [coords, v] of mapVillageData) {
     const t = v.troops_total || {};
@@ -713,47 +728,41 @@ function placeShields() {
   }
   if (bunkeredSet.size === 0) return;
 
-  // Percorre todos os sectores (DIVs filhos directos do container)
-  const sectors = container.children;
-  for (let si = 0; si < sectors.length; si++) {
-    const sector = sectors[si];
-    if (sector.tagName !== 'DIV') continue;
+  // Remove escudos antigos que já não são válidos
+  document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+  shieldElements = {};
 
-    const sectorLeft = parseFloat(sector.style.left) || 0;
-    const sectorTop = parseFloat(sector.style.top) || 0;
+  // Percorre todas as imgs de aldeia visíveis
+  const imgs = mapEl.querySelectorAll('img[src*="n_v"]');
+  for (const img of imgs) {
+    const r = img.getBoundingClientRect();
+    // Fora do viewport?
+    if (r.right < mapRect.left || r.bottom < mapRect.top || r.left > mapRect.right || r.top > mapRect.bottom) continue;
 
-    // Percorre imagens de aldeias dentro do sector
-    const imgs = sector.querySelectorAll('img[src*="n_v"]');
-    for (const img of imgs) {
-      const imgLeft = parseFloat(img.style.left) || 0;
-      const imgTop = parseFloat(img.style.top) || 0;
+    // Calcula coordenadas do mundo
+    const rx = r.left - mapRect.left;
+    const ry = r.top - mapRect.top;
+    const vx = Math.round(rx / scale[0] + centerX - mapRect.width / scale[0] / 2);
+    const vy = Math.round(ry / scale[1] + centerY - mapRect.height / scale[1] / 2);
+    const coordKey = vx + '|' + vy;
 
-      // Coordenada absoluta em pixels
-      const absX = sectorLeft + imgLeft;
-      const absY = sectorTop + imgTop;
+    if (!bunkeredSet.has(coordKey)) continue;
 
-      // Coordenada do mundo
-      const vx = Math.round(absX / fieldW);
-      const vy = Math.round(absY / fieldH);
-      const coordKey = vx + '|' + vy;
-
-      if (!bunkeredSet.has(coordKey)) continue;
-      if (shieldElements[coordKey]) continue; // Já tem escudo
-
-      // Adiciona escudo como sibling no mesmo sector
-      const shield = document.createElement('img');
-      shield.src = SHIELD_SVG;
-      shield.dataset.eosShield = coordKey;
-      shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${imgLeft}px;top:${imgTop - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
-      sector.appendChild(shield);
-      shieldElements[coordKey] = shield;
-    }
+    // Coloca escudo no mesmo parent (sector) que a img
+    const shield = document.createElement('img');
+    shield.src = SHIELD_SVG;
+    shield.dataset.eosShield = coordKey;
+    const imgLeft = parseFloat(img.style.left) || 0;
+    const imgTop = parseFloat(img.style.top) || 0;
+    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${imgLeft + 18}px;top:${imgTop - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
+    img.parentElement.appendChild(shield);
+    shieldElements[coordKey] = shield;
   }
 }
 
 function startShieldTracking() {
-  // Re-scan periodicamente para apanhar novos sectores carregados ao fazer pan
-  setInterval(placeShields, 2000);
+  // Re-scan a cada 1s para apanhar pan e novos sectores
+  setInterval(placeShields, 1000);
 }
 
 function handleMapMouseMove(e) {
