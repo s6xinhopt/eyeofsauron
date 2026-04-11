@@ -663,51 +663,16 @@ async function initMapOverlay() {
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
 
-  // Escuta mensagens do bridge MAIN world
+
+  // Espera pelo viewport do page_reader para obter fieldW/fieldH
+  // Depois coloca os escudos directamente usando x*fieldW, y*fieldH
   window.addEventListener('message', (e) => {
     if (!e.data) return;
     if (e.data.type === 'EOS_MAP_VIEWPORT') {
       mapViewport = e.data;
-    }
-    if (e.data.type === 'EOS_MAP_PIXELS') {
-      placeShields(e.data.positions || {});
-    }
-    if (e.data.type === 'EOS_MAP_BRIDGE_READY') {
-      requestShieldPositions();
+      placeShields();
     }
   });
-
-  // Injeta bridge: pede pixelByCoord para cada aldeia bunkada
-  // O content.js envia as coords, o MAIN world devolve as posições em pixels
-  const bridgeScript = document.createElement('script');
-  bridgeScript.textContent = `
-    (function() {
-      var attempts = 0;
-      function tryStart() {
-        attempts++;
-        if (window.TWMap && window.TWMap.map && window.TWMap.map.pixelByCoord) {
-          window.addEventListener('message', function(e) {
-            if (!e.data || e.data.type !== 'EOS_MAP_GET_PIXELS') return;
-            var results = {};
-            var coords = e.data.coords || [];
-            for (var i = 0; i < coords.length; i++) {
-              var parts = coords[i].split('|');
-              var px = window.TWMap.map.pixelByCoord(parseInt(parts[0]), parseInt(parts[1]));
-              if (px) results[coords[i]] = { x: px[0], y: px[1] };
-            }
-            window.postMessage({ type: 'EOS_MAP_PIXELS', positions: results }, '*');
-          });
-          // Sinaliza que está pronto
-          window.postMessage({ type: 'EOS_MAP_BRIDGE_READY' }, '*');
-        } else if (attempts < 150) {
-          setTimeout(tryStart, 200);
-        }
-      }
-      tryStart();
-    })();
-  `;
-  (document.head || document.documentElement).appendChild(bridgeScript);
-  bridgeScript.remove();
 
   // Tooltip via mousemove no elemento #map
   const waitForMapEl = setInterval(() => {
@@ -735,27 +700,16 @@ async function fetchMapData(token) {
         mapVillageData.set(v.village_coords, v);
       }
     }
-    requestShieldPositions();
+    placeShields();
   } catch (_) {}
 }
 
-function requestShieldPositions() {
+function placeShields() {
   if (!mapVillageData) return;
-  // Envia coordenadas de aldeias bunkadas para o MAIN world calcular pixels
-  const bunkeredCoords = [];
-  for (const [coords, v] of mapVillageData) {
-    const t = v.troops_total || {};
-    if ((t.spear || 0) >= 10000 && (t.sword || 0) >= 10000) {
-      bunkeredCoords.push(coords);
-    }
-  }
-  if (bunkeredCoords.length > 0) {
-    window.postMessage({ type: 'EOS_MAP_GET_PIXELS', coords: bunkeredCoords }, '*');
-  }
-}
 
-function placeShields(positions) {
-  if (!mapVillageData) return;
+  // Usa viewport se disponível, senão default TW scale
+  const fieldW = mapViewport?.fieldW || 53;
+  const fieldH = mapViewport?.fieldH || 38;
 
   // Cria overlay dentro de #map_container (move-se com o mapa)
   if (!mapOverlayEl) {
@@ -767,24 +721,24 @@ function placeShields(positions) {
     container.appendChild(mapOverlayEl);
   }
 
-  for (const [coords, pos] of Object.entries(positions)) {
-    const v = mapVillageData.get(coords);
-    if (!v) continue;
-
+  for (const [coords, v] of mapVillageData) {
     const t = v.troops_total || {};
     const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
     if (!bunkered) continue;
 
-    if (!shieldElements[coords]) {
-      const el = document.createElement('img');
-      el.src = SHIELD_SVG;
-      el.style.cssText = 'position:absolute;width:18px;height:18px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))';
-      mapOverlayEl.appendChild(el);
-      shieldElements[coords] = el;
-    }
-    // pixelByCoord devolve a posição absoluta no container
-    shieldElements[coords].style.left = (pos.x + 18) + 'px';
-    shieldElements[coords].style.top = (pos.y - 2) + 'px';
+    if (shieldElements[coords]) continue; // Já criado
+
+    const [vx, vy] = coords.split('|').map(Number);
+    if (isNaN(vx) || isNaN(vy)) continue;
+
+    const el = document.createElement('img');
+    el.src = SHIELD_SVG;
+    el.style.cssText = 'position:absolute;width:18px;height:18px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))';
+    // Posição absoluta no container: x * fieldW, y * fieldH
+    el.style.left = (vx * fieldW + fieldW / 2 - 9) + 'px';
+    el.style.top = (vy * fieldH + fieldH / 2 - 9) + 'px';
+    mapOverlayEl.appendChild(el);
+    shieldElements[coords] = el;
   }
 }
 
