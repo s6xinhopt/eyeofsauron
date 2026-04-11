@@ -662,7 +662,7 @@ let bunkTypes = [...DEFAULT_BUNK_TYPES];
 function makeShieldElement(color) {
   const el = document.createElement('div');
   el.textContent = '🛡️';
-  el.style.cssText = `font-size:12px;line-height:16px;width:16px;height:16px;text-align:center;border-radius:3px;background:${color};box-shadow:0 1px 3px rgba(0,0,0,.5)`;
+  el.style.cssText = `font-size:10px;line-height:16px;width:16px;height:16px;text-align:center;border-radius:50%;background:${color};box-shadow:0 1px 3px rgba(0,0,0,.5)`;
   return el;
 }
 
