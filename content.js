@@ -653,9 +653,9 @@ function calcDefPop(troops) {
 }
 
 const DEFAULT_BUNK_TYPES = [
-  { id: 'heavy_bunk', name: 'Bunk Pesado', color: '#4caf50', minDefPop: 100000, enabled: true },
+  { id: 'light_bunk', name: 'Bunk Leve', color: '#4caf50', minDefPop: 20000, enabled: true },
   { id: 'medium_bunk', name: 'Bunk Médio', color: '#ff9800', minDefPop: 45000, enabled: true },
-  { id: 'light_bunk', name: 'Bunk Leve', color: '#f44336', minDefPop: 20000, enabled: true },
+  { id: 'heavy_bunk', name: 'Bunk Pesado', color: '#f44336', minDefPop: 100000, enabled: true },
 ];
 let bunkTypes = [...DEFAULT_BUNK_TYPES];
 
@@ -666,8 +666,11 @@ function makeShieldSvg(color) {
 function classifyVillageForMap(troopsTotal) {
   if (!troopsTotal) return null;
   const defPop = calcDefPop(troopsTotal);
-  // Bunk types ordenados por prioridade (primeiro match = mais exigente primeiro)
-  for (const bt of bunkTypes) {
+  // Ranges: leve=[leve.min, medio.min), medio=[medio.min, pesado.min), pesado=[pesado.min, ∞)
+  // bunkTypes está ordenado: [leve, médio, pesado]
+  // Itera de trás para frente (pesado primeiro) para match do mais exigente
+  for (let i = bunkTypes.length - 1; i >= 0; i--) {
+    const bt = bunkTypes[i];
     if (!bt.enabled) continue;
     if (defPop >= (bt.minDefPop || 0)) return bt;
   }
@@ -779,6 +782,9 @@ function buildSettingsPanelHTML() {
 
   for (let i = 0; i < bunkTypes.length; i++) {
     const bt = bunkTypes[i];
+    // Range label
+    const nextMin = i < bunkTypes.length - 1 ? bunkTypes[i + 1].minDefPop : null;
+    const rangeLabel = nextMin ? `${fmtK(bt.minDefPop)} — ${fmtK(nextMin)}` : `${fmtK(bt.minDefPop)}+`;
 
     html += `
       <div style="background:linear-gradient(135deg,#322a22,#28221c);border:1px solid #e8502025;border-left:3px solid ${bt.color};
@@ -787,40 +793,31 @@ function buildSettingsPanelHTML() {
           <div style="display:flex;align-items:center;gap:8px">
             <input type="color" value="${bt.color}" data-field="color" data-idx="${i}"
               style="width:24px;height:24px;border:1px solid #e8502030;border-radius:4px;cursor:pointer;background:#1a1a1a;padding:1px">
-            <input type="text" value="${bt.name}" data-field="name" data-idx="${i}"
-              style="background:#1e1a14;border:1px solid #e8502025;border-radius:4px;color:#f0e0c8;font-size:12px;
-              font-weight:600;padding:4px 8px;width:130px;outline:none">
+            <span style="color:#f0e0c8;font-size:13px;font-weight:700">${bt.name}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#b09878">
-              <input type="checkbox" ${bt.enabled ? 'checked' : ''} data-field="enabled" data-idx="${i}"
-                style="accent-color:#e8a030;cursor:pointer">
-              Ativo
-            </label>
-            <button data-delete="${i}" style="background:none;border:1px solid #5a2020;color:#e04848;border-radius:3px;
-              font-size:10px;cursor:pointer;padding:2px 6px;line-height:1">✕</button>
-          </div>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#b09878">
+            <input type="checkbox" ${bt.enabled ? 'checked' : ''} data-field="enabled" data-idx="${i}"
+              style="accent-color:#e8a030;cursor:pointer">
+            Ativo
+          </label>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="display:flex;align-items:center;gap:4px">
-            <img src="${unitPng('spear')}" style="width:14px;height:14px;opacity:.6" title="Lanceiros (1 pop)">
-            <img src="${unitPng('sword')}" style="width:14px;height:14px;opacity:.6" title="Espadachins (1 pop)">
-            <img src="${unitPng('heavy')}" style="width:14px;height:14px;opacity:.6" title="Cavalaria Pesada (6 pop)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:3px">
+            <img src="${unitPng('spear')}" style="width:18px;height:18px;opacity:.7" title="Lanceiros (1 pop)">
+            <img src="${unitPng('sword')}" style="width:18px;height:18px;opacity:.7" title="Espadachins (1 pop)">
+            <img src="${unitPng('heavy')}" style="width:18px;height:18px;opacity:.7" title="Cavalaria Pesada (6 pop)">
           </div>
-          <span style="font-size:10px;color:#b09878">Pop Def ≥</span>
+          <span style="font-size:12px;color:#c0b090;font-weight:600">Pop Def ≥</span>
           <input type="number" value="${bt.minDefPop || 0}" data-field="minDefPop" data-idx="${i}" min="0" step="5000"
-            style="width:70px;background:#141010;border:1px solid #e8502020;border-radius:3px;color:#f0e0c8;
-            font-size:12px;padding:3px 5px;outline:none;text-align:center;font-weight:600">
+            style="width:75px;background:#141010;border:1px solid #e8502020;border-radius:4px;color:#f0e0c8;
+            font-size:13px;padding:4px 6px;outline:none;text-align:center;font-weight:700">
         </div>
+        <div style="font-size:9px;color:#807060;margin-top:5px">Intervalo: ${rangeLabel} pop defensiva</div>
       </div>
     `;
   }
 
   html += `
-    <button id="eos-add-bunk-type" style="width:100%;padding:8px;background:#1e1a14;color:#b09878;
-      border:1px dashed #e8502025;border-radius:6px;font-size:11px;cursor:pointer;margin-top:4px">
-      + Novo tipo
-    </button>
     </div>
     <div style="padding:10px 14px;border-top:1px solid #e8502030;flex-shrink:0">
       <button id="eos-save-map-settings" style="width:100%;padding:10px;
@@ -863,21 +860,6 @@ function attachSettingsEvents(panel) {
     }
   });
 
-  // Delete bunk type
-  panel.querySelectorAll('[data-delete]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      bunkTypes.splice(parseInt(btn.dataset.delete), 1);
-      toggleMapSettingsPanel();
-      toggleMapSettingsPanel();
-    });
-  });
-
-  // Add new bunk type
-  panel.querySelector('#eos-add-bunk-type')?.addEventListener('click', () => {
-    bunkTypes.push({ id: 'custom_' + Date.now(), name: 'Novo Tipo', color: '#8080ff', minDefPop: 30000, enabled: true });
-    toggleMapSettingsPanel();
-    toggleMapSettingsPanel();
-  });
 
   // Save
   panel.querySelector('#eos-save-map-settings')?.addEventListener('click', async () => {
