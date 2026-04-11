@@ -697,7 +697,8 @@ async function fetchMapData(token) {
 }
 
 function placeShields() {
-  if (!mapVillageData || !mapCenterX || !mapCenterY) return;
+  if (!mapVillageData || mapVillageData.size === 0) return;
+  if (mapCenterX === 0 && mapCenterY === 0) return; // Ainda não calculou o centro
 
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
@@ -790,21 +791,21 @@ function startShieldTracking() {
 }
 
 function handleMapMouseMove(e) {
-  if (!mapViewport || !mapVillageData) return;
+  if (!mapVillageData || mapVillageData.size === 0) return;
 
-  const { centerX, centerY, fieldW, fieldH, canvasLeft, canvasTop, canvasW, canvasH } = mapViewport;
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return;
+  const mapRect = mapEl.getBoundingClientRect();
+  const fieldW = 53;
+  const fieldH = 38;
 
-  // Mouse dentro do canvas?
-  const mx = e.clientX - canvasLeft;
-  const my = e.clientY - canvasTop;
-  if (mx < 0 || my < 0 || mx > canvasW || my > canvasH) {
-    if (mapTooltipEl) mapTooltipEl.style.display = 'none';
-    return;
-  }
+  // Posição do rato relativa ao #map
+  const mx = e.clientX - mapRect.left;
+  const my = e.clientY - mapRect.top;
 
-  // Calcula coordenada do grid
-  const gx = Math.floor((mx - canvasW / 2) / fieldW + centerX);
-  const gy = Math.floor((my - canvasH / 2) / fieldH + centerY);
+  // Calcula coordenada do grid usando o centro derivado do container
+  const gx = Math.floor((mx - mapRect.width / 2) / fieldW + mapCenterX);
+  const gy = Math.floor((my - mapRect.height / 2) / fieldH + mapCenterY);
   const coordKey = `${gx}|${gy}`;
 
   const v = mapVillageData.get(coordKey);
