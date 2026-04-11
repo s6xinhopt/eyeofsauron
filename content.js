@@ -646,8 +646,8 @@ let eosMapEnabled = true;
 
 // Configuração de bunk types (guardada no storage)
 const DEFAULT_BUNK_TYPES = [
-  { id: 'heavy_bunk', name: 'Bunker Pesado', color: '#4caf50', spear: 15000, sword: 15000, enabled: true },
-  { id: 'light_bunk', name: 'Bunker Leve', color: '#ff9800', spear: 10000, sword: 10000, enabled: true },
+  { id: 'heavy_bunk', name: 'Bunk Pesado', color: '#4caf50', spear: 15000, sword: 15000, enabled: true },
+  { id: 'light_bunk', name: 'Bunk Leve', color: '#ff9800', spear: 10000, sword: 10000, enabled: true },
   { id: 'nuke_village', name: 'Nuke', color: '#f44336', axe: 5000, light: 2000, ram: 200, enabled: true },
 ];
 let bunkTypes = [...DEFAULT_BUNK_TYPES];
@@ -751,8 +751,8 @@ function toggleMapSettingsPanel() {
   panel.id = 'eos-map-settings-panel';
   panel.style.cssText = `position:absolute;top:36px;right:4px;width:320px;z-index:99999;
     background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:8px;
-    padding:16px;font-family:Segoe UI,sans-serif;font-size:12px;color:#f0e0c8;
-    box-shadow:0 8px 32px rgba(0,0,0,0.8);max-height:70vh;overflow-y:auto`;
+    padding:14px;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;
+    box-shadow:0 8px 32px rgba(0,0,0,0.8);max-height:50vh;overflow-y:auto`;
 
   panel.innerHTML = buildSettingsPanelHTML();
   document.getElementById('map').appendChild(panel);
@@ -777,7 +777,7 @@ function buildSettingsPanelHTML() {
     </div>
 
     <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;font-weight:700">
-      Tipos de Bunker
+      Tipos de Bunk
     </div>
   `;
 
@@ -825,7 +825,7 @@ function buildSettingsPanelHTML() {
   html += `
     <button id="eos-add-bunk-type" style="width:100%;padding:8px;background:#1e1a14;color:#b09878;
       border:1px dashed #e8502025;border-radius:6px;font-size:11px;cursor:pointer;margin-top:4px">
-      + Adicionar tipo de bunker
+      + Novo tipo
     </button>
     <button id="eos-save-map-settings" style="width:100%;padding:10px;margin-top:12px;
       background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:6px;
