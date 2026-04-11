@@ -751,8 +751,8 @@ function toggleMapSettingsPanel() {
   panel.id = 'eos-map-settings-panel';
   panel.style.cssText = `position:absolute;top:36px;right:4px;width:320px;z-index:99999;
     background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:8px;
-    padding:14px;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;
-    box-shadow:0 8px 32px rgba(0,0,0,0.8);max-height:50vh;overflow-y:auto`;
+    padding:0;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;
+    box-shadow:0 8px 32px rgba(0,0,0,0.8);max-height:50vh;display:flex;flex-direction:column;overflow:hidden`;
 
   panel.innerHTML = buildSettingsPanelHTML();
   document.getElementById('map').appendChild(panel);
@@ -764,7 +764,7 @@ function buildSettingsPanelHTML() {
   const toggleBg = eosMapEnabled ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
 
   let html = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #e8502030">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid #e8502030;flex-shrink:0">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:16px">👁</span>
         <span style="font-size:14px;font-weight:700;color:#f8c850;letter-spacing:1px">EYE OF SAURON</span>
@@ -776,6 +776,7 @@ function buildSettingsPanelHTML() {
       </button>
     </div>
 
+    <div style="flex:1;overflow-y:auto;padding:14px">
     <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;font-weight:700">
       Tipos de Bunk
     </div>
@@ -827,12 +828,15 @@ function buildSettingsPanelHTML() {
       border:1px dashed #e8502025;border-radius:6px;font-size:11px;cursor:pointer;margin-top:4px">
       + Novo tipo
     </button>
-    <button id="eos-save-map-settings" style="width:100%;padding:10px;margin-top:12px;
-      background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:6px;
-      font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.5px;
-      box-shadow:0 2px 12px #e8502040">
-      Guardar definições
-    </button>
+    </div>
+    <div style="padding:10px 14px;border-top:1px solid #e8502030;flex-shrink:0">
+      <button id="eos-save-map-settings" style="width:100%;padding:10px;
+        background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:6px;
+        font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.5px;
+        box-shadow:0 2px 12px #e8502040">
+        Guardar definições
+      </button>
+    </div>
   `;
 
   return html;
