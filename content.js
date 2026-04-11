@@ -686,9 +686,13 @@ function showSubscriptionOverlay(sub, tribeName) {
   // Botão de subscrição abre a página de pagamento
   const subBtn = overlay.querySelector('#eos-subscribe-btn');
   if (subBtn) {
-    subBtn.addEventListener('click', () => {
-      // TODO: abrir página de checkout quando Stripe estiver implementado
-      alert('Sistema de pagamentos em breve! Contacta o administrador.');
+    subBtn.addEventListener('click', async () => {
+      const { eosPlayerName, eosWorld, eosTribeName } = await getStorage('eosPlayerName', 'eosWorld', 'eosTribeName');
+      const tribe = encodeURIComponent(eosTribeName || tribeName);
+      const world = encodeURIComponent(eosWorld || '');
+      const player = encodeURIComponent(eosPlayerName || '');
+      const url = `${EOS_SERVER}/subscribe?tribe=${tribe}&world=${world}&player=${player}`;
+      window.open(url, '_blank');
     });
   }
 }
