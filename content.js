@@ -640,7 +640,6 @@ function isMapPage() {
 let mapVillageData = null; // Map<coordKey, villageData>
 let mapViewport = null;
 let mapOverlayEl = null;
-let mapTooltipEl = null;
 let shieldElements = {}; // coordKey → DOM element
 let eosMapEnabled = true;
 
@@ -682,11 +681,8 @@ async function initMapOverlay() {
   if (savedEnabled === false) eosMapEnabled = false;
   if (Array.isArray(eosBunkTypes) && eosBunkTypes.length > 0) bunkTypes = eosBunkTypes;
 
-  // Cria tooltip
-  mapTooltipEl = document.createElement('div');
-  mapTooltipEl.id = 'eos-map-tooltip';
-  mapTooltipEl.style.cssText = 'position:fixed;z-index:2147483647;background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;padding:8px 12px;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;pointer-events:none;display:none;max-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.8)';
-  document.body.appendChild(mapTooltipEl);
+  // Observa o popup nativo do TW para injetar dados de tropas
+  setupPopupObserver();
 
   // Injeta botão de settings do mapa
   injectMapSettingsButton();
@@ -700,17 +696,6 @@ async function initMapOverlay() {
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
 
-  // Tooltip via mousemove
-  const waitForMapEl = setInterval(() => {
-    const mapEl = document.getElementById('map');
-    if (mapEl) {
-      clearInterval(waitForMapEl);
-      mapEl.addEventListener('mousemove', handleMapMouseMove);
-      mapEl.addEventListener('mouseleave', () => {
-        if (mapTooltipEl) mapTooltipEl.style.display = 'none';
-      });
-    }
-  }, 500);
 }
 
 // ── Painel de definições do mapa ──────────────────────────────────────────
@@ -1029,56 +1014,97 @@ function startShieldTracking() {
   setInterval(placeShields, 5000);
 }
 
-function handleMapMouseMove(e) {
-  if (!mapVillageData || mapVillageData.size === 0) return;
+function setupPopupObserver() {
+  // Observa o popup nativo #map_popup para injetar dados de tropas
+  const EOS_TROOP_ROW_ID = 'eos-troop-info';
 
-  const mapEl = document.getElementById('map');
-  if (!mapEl) return;
+  function injectTroopInfo() {
+    if (!mapVillageData || mapVillageData.size === 0) return;
 
-  const center = getMapCenter();
-  if (!center) return;
+    const popup = document.getElementById('map_popup');
+    if (!popup || popup.style.display === 'none') return;
 
-  const fieldW = 53;
-  const fieldH = 38;
-  const mapRect = mapEl.getBoundingClientRect();
+    // Já injetámos?
+    if (popup.querySelector('#' + EOS_TROOP_ROW_ID)) return;
 
-  // Coordenada do grid a partir da posição do rato + centro do mapa
-  const gx = Math.round((e.clientX - mapRect.left) / fieldW + center[0] - mapRect.width / fieldW / 2);
-  const gy = Math.round((e.clientY - mapRect.top) / fieldH + center[1] - mapRect.height / fieldH / 2);
-  const coordKey = `${gx}|${gy}`;
+    // Extrai coordenadas do titulo do popup (ex: "045 NÃO SEJAS SAPO (568|475) K45")
+    const header = popup.querySelector('th');
+    if (!header) return;
+    const coordMatch = header.textContent.match(/\((\d+\|\d+)\)/);
+    if (!coordMatch) return;
+    const coordKey = coordMatch[1];
 
-  const v = mapVillageData.get(coordKey);
-  if (!v) {
-    if (mapTooltipEl) mapTooltipEl.style.display = 'none';
-    return;
+    const v = mapVillageData.get(coordKey);
+    if (!v) return;
+
+    const t = v.troops_total || {};
+    const units = ['spear','sword','axe','spy','light','heavy','ram','catapult','snob'];
+    const bt = classifyVillageForMap(t);
+
+    // Cria a row de tropas
+    const tbody = popup.querySelector('#info_content tbody');
+    if (!tbody) return;
+
+    const troopRow = document.createElement('tr');
+    troopRow.id = EOS_TROOP_ROW_ID;
+
+    const td = document.createElement('td');
+    td.colSpan = 2;
+    td.style.cssText = 'padding:4px 0;border-top:1px solid #ddd';
+
+    // Badge do tipo de bunk
+    let badgeHtml = '';
+    if (bt) {
+      badgeHtml = `<div style="display:inline-block;background:${bt.color};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-bottom:3px">${bt.name}</div><br>`;
+    }
+
+    // Tabela de tropas compacta com PNGs
+    let troopHtml = '<table style="border-collapse:collapse;width:100%;margin-top:2px"><tr>';
+    for (const u of units) {
+      troopHtml += `<td style="text-align:center;padding:1px"><img src="/graphic/unit/unit_${u}.png" style="width:14px;height:14px;vertical-align:middle" title="${u}"></td>`;
+    }
+    troopHtml += '</tr><tr>';
+    for (const u of units) {
+      const val = t[u] || 0;
+      troopHtml += `<td style="text-align:center;font-size:10px;font-weight:600;color:${val > 0 ? '#000' : '#bbb'};padding:1px">${val > 0 ? fmtK(val) : '-'}</td>`;
+    }
+    troopHtml += '</tr></table>';
+
+    // Info do jogador e atualização
+    const updatedAgo = v.updated_at ? timeAgoShort(v.updated_at) : '?';
+    const ownerHtml = `<div style="font-size:9px;color:#888;margin-top:2px">👁 ${v.player_name} · atualizado ${updatedAgo}</div>`;
+
+    td.innerHTML = badgeHtml + troopHtml + ownerHtml;
+    troopRow.appendChild(td);
+    tbody.appendChild(troopRow);
   }
 
-  // Mostra tooltip
-  const t = v.troops_total || {};
-  const own = v.troops_own || {};
-  const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
-
-  const units = ['spear','sword','axe','spy','light','heavy','ram','catapult','snob'];
-  const unitLabels = { spear:'Lanc', sword:'Espad', axe:'Vik', spy:'Bat', light:'Lev', heavy:'Pes', ram:'Ari', catapult:'Cat', snob:'Nob' };
-
-  let html = `<div style="font-weight:700;color:#f8c850;margin-bottom:4px">${v.village_name || coordKey}</div>`;
-  html += `<div style="font-size:10px;color:#b09878;margin-bottom:6px">${v.player_name} · ${coordKey}</div>`;
-  if (bunkered) html += `<div style="color:#4caf50;font-weight:700;font-size:10px;margin-bottom:4px">🛡️ BUNKADA</div>`;
-
-  html += '<table style="border-collapse:collapse;width:100%">';
-  html += '<tr style="border-bottom:1px solid #e8502020">';
-  for (const u of units) html += `<td style="padding:2px 4px;text-align:center;font-size:9px;color:#b09878">${unitLabels[u]}</td>`;
-  html += '</tr><tr>';
-  for (const u of units) {
-    const val = t[u] || 0;
-    html += `<td style="padding:2px 4px;text-align:center;font-size:11px;font-weight:600;color:${val > 0 ? '#f0e0c8' : '#4a4030'}">${val > 0 ? fmtK(val) : '0'}</td>`;
+  function timeAgoShort(iso) {
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 2) return 'agora';
+    if (min < 60) return min + 'm';
+    const h = Math.floor(min / 60);
+    if (h < 24) return h + 'h';
+    return Math.floor(h / 24) + 'd';
   }
-  html += '</tr></table>';
 
-  mapTooltipEl.innerHTML = html;
-  mapTooltipEl.style.display = '';
-  mapTooltipEl.style.left = Math.min(e.clientX + 12, window.innerWidth - 340) + 'px';
-  mapTooltipEl.style.top = (e.clientY + 16) + 'px';
+  // Observa mudanças no popup (TW atualiza o conteúdo quando muda de aldeia)
+  const waitPopup = setInterval(() => {
+    const popup = document.getElementById('map_popup');
+    if (!popup) return;
+    clearInterval(waitPopup);
+
+    const obs = new MutationObserver(() => {
+      // Remove a injeção anterior e re-injeta
+      const old = popup.querySelector('#' + EOS_TROOP_ROW_ID);
+      if (old) old.remove();
+      setTimeout(injectTroopInfo, 50);
+    });
+    obs.observe(popup, { childList: true, subtree: true, characterData: true });
+
+    // Primeira injeção
+    injectTroopInfo();
+  }, 500);
 }
 
 function fmtK(n) {
