@@ -1094,13 +1094,19 @@ function setupPopupObserver() {
     if (!popup) return;
     clearInterval(waitPopup);
 
+    let observing = true;
     const obs = new MutationObserver(() => {
-      // Remove a injeção anterior e re-injeta
+      if (!observing) return;
+      // Desliga temporariamente para evitar loop
+      observing = false;
       const old = popup.querySelector('#' + EOS_TROOP_ROW_ID);
       if (old) old.remove();
-      setTimeout(injectTroopInfo, 50);
+      setTimeout(() => {
+        injectTroopInfo();
+        observing = true;
+      }, 100);
     });
-    obs.observe(popup, { childList: true, subtree: true, characterData: true });
+    obs.observe(popup, { childList: true, subtree: true });
 
     // Primeira injeção
     injectTroopInfo();
