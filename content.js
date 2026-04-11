@@ -709,13 +709,13 @@ function placeShields() {
   let centerX = mapViewport?.centerX;
   let centerY = mapViewport?.centerY;
 
-  // Fallback: lê a posição de TWMap.pos do URL ou input do mapa
+  // Fallback: lê a posição do hash da URL (formato: #x;y)
   if (!centerX) {
-    const xInput = document.querySelector('#map_coord_x, input[name="x"]');
-    const yInput = document.querySelector('#map_coord_y, input[name="y"]');
-    if (xInput && yInput) {
-      centerX = parseInt(xInput.value) || 0;
-      centerY = parseInt(yInput.value) || 0;
+    const hash = window.location.hash.replace('#', '');
+    const parts = hash.split(';');
+    if (parts.length === 2) {
+      centerX = parseInt(parts[0]) || 0;
+      centerY = parseInt(parts[1]) || 0;
     }
   }
   if (!centerX) return;
@@ -761,8 +761,9 @@ function placeShields() {
 }
 
 function startShieldTracking() {
-  // Re-scan a cada 1s para apanhar pan e novos sectores
-  setInterval(placeShields, 1000);
+  // Re-scan a cada 500ms para apanhar pan e novos sectores
+  // O hash da URL atualiza quando o mapa se move (#x;y)
+  setInterval(placeShields, 500);
 }
 
 function handleMapMouseMove(e) {
