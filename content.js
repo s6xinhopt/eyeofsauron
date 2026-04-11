@@ -971,9 +971,30 @@ function placeShields() {
   const mapRect = mapEl.getBoundingClientRect();
   const fieldW = 53, fieldH = 38;
 
-  // Lê centro do mapa
+  // Calibração: encontra uma img de aldeia visível e usa-a como referência
+  // Isto é mais preciso que o centro do TWMap (pode ter delay)
+  const villageSelector = 'img[src*="/v3.png"], img[src*="/v4.png"], img[src*="/v5.png"], img[src*="/v6.png"], img[src*="/v1.png"], img[src*="/v2.png"], img[src*="n_v"]';
   const center = getMapCenter();
   if (!center) return;
+
+  let refX = center[0], refY = center[1];
+  let refPixelX = mapRect.width / 2, refPixelY = mapRect.height / 2;
+
+  // Tenta calibrar com uma aldeia real visível
+  const refImgs = mapEl.querySelectorAll(villageSelector);
+  for (const img of refImgs) {
+    const r = img.getBoundingClientRect();
+    if (r.left < mapRect.left || r.top < mapRect.top || r.right > mapRect.right || r.bottom > mapRect.bottom) continue;
+    // Calcula coord desta aldeia
+    const imgVx = Math.round((r.left - mapRect.left) / fieldW + center[0] - mapRect.width / fieldW / 2);
+    const imgVy = Math.round((r.top - mapRect.top) / fieldH + center[1] - mapRect.height / fieldH / 2);
+    // Usa esta como referência
+    refX = imgVx;
+    refY = imgVy;
+    refPixelX = r.left - mapRect.left;
+    refPixelY = r.top - mapRect.top;
+    break;
+  }
 
   // Classifica aldeias por bunk type
   const bunkeredMap = new Map();
@@ -983,10 +1004,6 @@ function placeShields() {
   }
   if (bunkeredMap.size === 0) return;
 
-  const [cx, cy] = center;
-  const halfW = mapRect.width / 2;
-  const halfH = mapRect.height / 2;
-
   // Overlay fixo sobre o #map
   if (!mapOverlayEl) {
     mapOverlayEl = document.createElement('div');
@@ -995,7 +1012,6 @@ function placeShields() {
     mapEl.style.position = 'relative';
     mapEl.appendChild(mapOverlayEl);
   }
-  // Limpa escudos antigos
   mapOverlayEl.textContent = '';
   shieldElements = {};
 
@@ -1003,9 +1019,9 @@ function placeShields() {
     const [vx, vy] = coordKey.split('|').map(Number);
     if (isNaN(vx) || isNaN(vy)) continue;
 
-    // Posição relativa ao #map
-    const px = (vx - cx) * fieldW + halfW - 9;
-    const py = (vy - cy) * fieldH + halfH - 9;
+    // Posição relativa ao ponto de referência calibrado
+    const px = refPixelX + (vx - refX) * fieldW;
+    const py = refPixelY + (vy - refY) * fieldH;
 
     // Fora do viewport?
     if (px < -20 || py < -20 || px > mapRect.width + 20 || py > mapRect.height + 20) continue;
