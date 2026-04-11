@@ -991,6 +991,9 @@ function placeShields() {
     const domVillage = document.getElementById('map_village_' + vid);
     if (!domVillage) continue;
 
+    // Skip se já tem escudo neste sector para esta coordenada
+    if (domVillage.parentNode.querySelector(`[data-eos-shield="${coordKey}"]`)) continue;
+
     const top = parseInt(domVillage.style.top, 10) || 0;
     const left = parseInt(domVillage.style.left, 10) || 0;
 
@@ -1001,7 +1004,6 @@ function placeShields() {
     shield.className = 'eos-shield-icon';
     shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:20;left:${left + 18}px;top:${top - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
     domVillage.parentNode.insertBefore(shield, domVillage);
-    shieldElements[coordKey] = shield;
   }
 }
 
