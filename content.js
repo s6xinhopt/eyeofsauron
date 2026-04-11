@@ -739,6 +739,7 @@ async function fetchMapData(token) {
 
 function updateMapOverlay() {
   if (!mapVillageData || !mapViewport) return;
+  console.log('[EOS Map] updateOverlay: villages=' + mapVillageData.size + ' center=' + mapViewport.centerX + ',' + mapViewport.centerY);
 
   const { centerX, centerY, fieldW, fieldH, canvasLeft, canvasTop, canvasW, canvasH } = mapViewport;
 
@@ -798,6 +799,7 @@ function updateMapOverlay() {
   for (const [coords, el] of Object.entries(shieldElements)) {
     if (!seen.has(coords)) el.style.display = 'none';
   }
+  console.log('[EOS Map] shields visible:', seen.size, 'total created:', Object.keys(shieldElements).length);
 }
 
 function handleMapMouseMove(e) {
