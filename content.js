@@ -986,46 +986,36 @@ function placeShields() {
   const [cx, cy] = center;
   const halfW = mapRect.width / 2;
   const halfH = mapRect.height / 2;
-  const container = document.getElementById('map_container');
-  if (!container) return;
+
+  // Overlay fixo sobre o #map
+  if (!mapOverlayEl) {
+    mapOverlayEl = document.createElement('div');
+    mapOverlayEl.id = 'eos-map-shield-overlay';
+    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;overflow:hidden';
+    mapEl.style.position = 'relative';
+    mapEl.appendChild(mapOverlayEl);
+  }
+  // Limpa escudos antigos
+  mapOverlayEl.textContent = '';
+  shieldElements = {};
 
   for (const [coordKey, bt] of bunkeredMap) {
-    if (shieldElements[coordKey]) continue;
-
     const [vx, vy] = coordKey.split('|').map(Number);
     if (isNaN(vx) || isNaN(vy)) continue;
 
-    // Posição esperada no ecrã
-    const screenX = (vx - cx) * fieldW + halfW + mapRect.left;
-    const screenY = (vy - cy) * fieldH + halfH + mapRect.top;
+    // Posição relativa ao #map
+    const px = (vx - cx) * fieldW + halfW - 9;
+    const py = (vy - cy) * fieldH + halfH - 9;
 
     // Fora do viewport?
-    if (screenX < mapRect.left - fieldW || screenY < mapRect.top - fieldH ||
-        screenX > mapRect.right + fieldW || screenY > mapRect.bottom + fieldH) continue;
-
-    // Encontra sector via getBoundingClientRect (só corre quando mapa parado)
-    let targetSector = null;
-    let localX = 0, localY = 0;
-    for (const sec of container.children) {
-      if (sec.tagName !== 'DIV') continue;
-      const sr = sec.getBoundingClientRect();
-      if (sr.width === 0) continue;
-      if (screenX >= sr.left && screenX < sr.right && screenY >= sr.top && screenY < sr.bottom) {
-        targetSector = sec;
-        localX = Math.round((screenX - sr.left) / fieldW) * fieldW;
-        localY = Math.round((screenY - sr.top) / fieldH) * fieldH;
-        break;
-      }
-    }
-
-    if (!targetSector) continue;
+    if (px < -20 || py < -20 || px > mapRect.width + 20 || py > mapRect.height + 20) continue;
 
     const shield = document.createElement('img');
     shield.src = makeShieldSvg(bt.color);
     shield.dataset.eosShield = coordKey;
     shield.title = bt.name + ' (' + coordKey + ')';
-    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:12;left:${localX + 18}px;top:${localY - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
-    targetSector.appendChild(shield);
+    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;left:${px}px;top:${py}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
+    mapOverlayEl.appendChild(shield);
     shieldElements[coordKey] = shield;
   }
 }
