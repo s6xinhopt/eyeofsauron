@@ -755,8 +755,19 @@ function placeShields() {
 }
 
 function startShieldTracking() {
-  // Scan a cada 2s para novos sectores carregados pelo pan
-  setInterval(placeShields, 2000);
+  const container = document.getElementById('map_container');
+  if (!container) return;
+
+  // Observer para detectar novos sectors/imgs adicionados pelo pan
+  let debounceTimer = null;
+  const obs = new MutationObserver(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(placeShields, 200);
+  });
+  obs.observe(container, { childList: true, subtree: true });
+
+  // Fallback: scan periódico para apanhar edge cases
+  setInterval(placeShields, 3000);
 }
 
 function handleMapMouseMove(e) {
