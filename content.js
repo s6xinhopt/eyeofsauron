@@ -643,7 +643,7 @@ let mapOverlayEl = null;
 let mapTooltipEl = null;
 let shieldElements = {}; // coordKey → DOM element
 
-const SHIELD_SVG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234caf50" stroke="%231a1a2e" stroke-width="1"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"/></svg>')}`;
+const SHIELD_SVG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="#4caf50" stroke="#1a3a1a" stroke-width="1.5"/><path d="M10 12l2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
 
 async function initMapOverlay() {
   if (!isMapPage()) return;
@@ -678,16 +678,15 @@ async function initMapOverlay() {
       function tryStart() {
         attempts++;
         if (window.TWMap && window.TWMap.map && window.TWMap.map.scale && document.getElementById('map')) {
-          var lastState = '';
+          var lastPosX = -1, lastPosY = -1;
           setInterval(function() {
             try {
               var pos = window.TWMap.pos || [500,500];
+              if (pos[0] === lastPosX && pos[1] === lastPosY) return;
+              lastPosX = pos[0]; lastPosY = pos[1];
               var scale = window.TWMap.map.scale || [53,38];
               var rect = document.getElementById('map').getBoundingClientRect();
               if (rect.width === 0) return;
-              var state = pos[0]+','+pos[1]+','+Math.round(rect.left)+','+Math.round(rect.top)+','+Math.round(rect.width)+','+Math.round(rect.height);
-              if (state === lastState) return;
-              lastState = state;
               window.postMessage({
                 type:'EOS_MAP_VIEWPORT',
                 centerX:pos[0],centerY:pos[1],
@@ -696,7 +695,7 @@ async function initMapOverlay() {
                 canvasW:rect.width,canvasH:rect.height
               },'*');
             } catch(e){}
-          }, 300);
+          }, 100);
         } else if (attempts < 150) {
           setTimeout(tryStart, 200);
         }
@@ -739,67 +738,59 @@ async function fetchMapData(token) {
 
 function updateMapOverlay() {
   if (!mapVillageData || !mapViewport) return;
-  console.log('[EOS Map] updateOverlay: villages=' + mapVillageData.size + ' center=' + mapViewport.centerX + ',' + mapViewport.centerY);
 
-  const { centerX, centerY, fieldW, fieldH, canvasLeft, canvasTop, canvasW, canvasH } = mapViewport;
+  const { centerX, centerY, fieldW, fieldH, canvasW, canvasH } = mapViewport;
 
-  // Calcula quantos campos cabem no canvas
-  const halfW = Math.ceil(canvasW / fieldW / 2) + 1;
-  const halfH = Math.ceil(canvasH / fieldH / 2) + 1;
-
-  // Cria overlay container se não existe
+  // Overlay dentro de #map (viewport fixo), clip ao viewport
   if (!mapOverlayEl) {
+    const mapRoot = document.getElementById('map');
+    if (!mapRoot) return;
     mapOverlayEl = document.createElement('div');
     mapOverlayEl.id = 'eos-map-shield-overlay';
-    mapOverlayEl.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;overflow:visible';
-    document.body.appendChild(mapOverlayEl);
+    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100;overflow:hidden';
+    mapRoot.style.position = 'relative';
+    mapRoot.appendChild(mapOverlayEl);
   }
-  mapOverlayEl.style.left = canvasLeft + 'px';
-  mapOverlayEl.style.top = canvasTop + 'px';
-  mapOverlayEl.style.width = canvasW + 'px';
-  mapOverlayEl.style.height = canvasH + 'px';
 
-  // Marca todos os escudos como não-vistos
-  const seen = new Set();
+  // Recalcula posições de todos os escudos bunkados
+  const halfW = canvasW / 2;
+  const halfH = canvasH / 2;
 
-  // Itera aldeias visíveis
   for (const [coords, v] of mapVillageData) {
+    const t = v.troops_total || {};
+    const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
+
+    if (!bunkered) {
+      if (shieldElements[coords]) { shieldElements[coords].style.display = 'none'; }
+      continue;
+    }
+
     const [vx, vy] = coords.split('|').map(Number);
     if (isNaN(vx) || isNaN(vy)) continue;
 
-    // Verifica se está bunkada
-    const t = v.troops_total || {};
-    const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
-    if (!bunkered) continue;
+    // Posição relativa ao centro do viewport
+    const px = (vx - centerX) * fieldW + halfW;
+    const py = (vy - centerY) * fieldH + halfH;
 
-    // TWMap.pos = centro do viewport. Pixel relativo ao overlay:
-    const px = (vx - centerX) * fieldW + canvasW / 2;
-    const py = (vy - centerY) * fieldH + canvasH / 2;
+    // Fora do viewport? Esconde
+    if (px < -20 || py < -20 || px > canvasW + 20 || py > canvasH + 20) {
+      if (shieldElements[coords]) shieldElements[coords].style.display = 'none';
+      continue;
+    }
 
-    // Fora do viewport?
-    if (px < -fieldW || py < -fieldH || px > canvasW + fieldW || py > canvasH + fieldH) continue;
-
-    seen.add(coords);
-
-    // Cria ou atualiza escudo
+    // Cria ou mostra escudo
     if (!shieldElements[coords]) {
       const el = document.createElement('img');
       el.src = SHIELD_SVG;
-      el.style.cssText = 'position:absolute;width:20px;height:20px;pointer-events:none;filter:drop-shadow(0 0 4px rgba(76,175,80,0.8))';
+      el.style.cssText = 'position:absolute;width:18px;height:18px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))';
       mapOverlayEl.appendChild(el);
       shieldElements[coords] = el;
     }
     const el = shieldElements[coords];
-    el.style.left = (px + fieldW / 2 - 8) + 'px';
-    el.style.top = (py - 2) + 'px';
+    el.style.left = (px + fieldW / 2 - 9) + 'px';
+    el.style.top = (py + fieldH / 2 - 9) + 'px';
     el.style.display = '';
   }
-
-  // Esconde escudos fora do viewport
-  for (const [coords, el] of Object.entries(shieldElements)) {
-    if (!seen.has(coords)) el.style.display = 'none';
-  }
-  console.log('[EOS Map] shields visible:', seen.size, 'total created:', Object.keys(shieldElements).length);
 }
 
 function handleMapMouseMove(e) {
