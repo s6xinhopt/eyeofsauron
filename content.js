@@ -15,6 +15,10 @@ function isGroupsPage() {
   return p.get('screen') === 'overview_villages' && p.get('mode') === 'groups';
 }
 
+function isOverviewPage() {
+  const p = new URLSearchParams(window.location.search);
+  return p.get('screen') === 'overview_villages' && !p.get('mode');
+}
 
 async function getStorage(...keys) {
   return chrome.storage.local.get(keys);
@@ -96,6 +100,108 @@ function classifyVillages() {
   });
 
   return result;
+}
+
+// ── Leitura de tropas por aldeia (via overview_villages) ────────────────────
+
+function readPerVillageTroops() {
+  const villages = [];
+  // A tabela principal no overview_villages
+  const table = document.querySelector('#units_table') || document.querySelector('table.vis.overview_table')
+    || document.querySelector('#content_value table.vis');
+  if (!table) return null;
+
+  // Descobre o mapeamento coluna → unidade a partir do header
+  const headerRow = table.querySelector('tr');
+  if (!headerRow) return null;
+  const headerCells = Array.from(headerRow.querySelectorAll('th, td'));
+  const unitColMap = [];
+  headerCells.forEach((cell, idx) => {
+    for (const unit of TROOP_NAMES) {
+      if (cell.querySelector(`img[src*="unit_${unit}"]`)) {
+        unitColMap.push({ unit, index: idx });
+        break;
+      }
+    }
+  });
+  if (!unitColMap.length) return null;
+
+  // Itera todas as rows procurando blocos de aldeias
+  const allRows = Array.from(table.querySelectorAll('tr'));
+  let currentVillage = null;
+
+  for (const row of allRows) {
+    // Detecta header de aldeia: contém link para info_village ou village=XXX
+    const villageLink = row.querySelector('a[href*="screen=info_village"], a[href*="village="]');
+    if (villageLink) {
+      const href = villageLink.getAttribute('href') || '';
+      // Extrai village_id do href
+      const idMatch = href.match(/village=(\d+)/) || href.match(/id=(\d+)/);
+      if (idMatch) {
+        // Guarda a aldeia anterior se tiver dados
+        if (currentVillage && currentVillage.troops_total) {
+          villages.push(currentVillage);
+        }
+        // Extrai nome e coordenadas do texto
+        const text = (villageLink.textContent || '').trim();
+        const coordMatch = text.match(/\((\d+\|\d+)\)/);
+        currentVillage = {
+          village_id: idMatch[1],
+          village_name: text.replace(/\s*\(\d+\|\d+\)\s*/, '').trim(),
+          village_coords: coordMatch ? coordMatch[1] : null,
+          troops_total: null,
+          troops_own: null
+        };
+      }
+    }
+
+    if (!currentVillage) continue;
+
+    // Detecta rows "total" e "as suas próprias"
+    const cells = Array.from(row.querySelectorAll('td'));
+    if (cells.length < 3) continue;
+
+    const label = (cells[0].textContent || '').trim().toLowerCase();
+    const isTotal = label === 'total' || label === 'total:';
+    const isOwn = label.includes('suas') || label.includes('próprias') || label.includes('proprias');
+
+    if (isTotal || isOwn) {
+      const troops = {};
+      for (const { unit, index } of unitColMap) {
+        if (index < cells.length) {
+          const v = parseInt((cells[index].textContent || '').replace(/\./g, '').replace(/\D/g, '')) || 0;
+          if (v > 0) troops[unit] = v;
+        }
+      }
+      if (Object.keys(troops).length > 0) {
+        if (isTotal) currentVillage.troops_total = troops;
+        if (isOwn) currentVillage.troops_own = troops;
+      }
+    }
+  }
+
+  // Última aldeia
+  if (currentVillage && currentVillage.troops_total) {
+    villages.push(currentVillage);
+  }
+
+  return villages.length > 0 ? villages : null;
+}
+
+function waitForOverviewTable() {
+  return new Promise((resolve, reject) => {
+    const ready = () => {
+      const t = document.querySelector('#units_table') || document.querySelector('table.vis.overview_table')
+        || document.querySelector('#content_value table.vis');
+      return t && t.querySelectorAll('tr').length > 3;
+    };
+    if (ready()) return resolve();
+    const observer = new MutationObserver(() => {
+      if (ready()) { observer.disconnect(); resolve(); }
+    });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    setTimeout(() => { observer.disconnect(); reject(new Error('Timeout overview')); }, 15000);
+  });
 }
 
 function waitForTable() {
@@ -382,6 +488,60 @@ async function main() {
     return;
   }
 
+  // Página overview: lê tropas por aldeia
+  if (isOverviewPage()) {
+    const { pendingVillageReport, eosToken } = await getStorage('pendingVillageReport', 'eosToken');
+    if (!pendingVillageReport || !eosToken) return;
+
+    // Paginação: clicar em [todos]
+    const pagClicked = sessionStorage.getItem('eos_village_pag_clicked') === '1';
+    if (!pagClicked) {
+      const pagTodos = await new Promise(resolve => {
+        const find = () => Array.from(document.querySelectorAll('a.paged-nav-item'))
+          .find(a => /todos/i.test(a.textContent.trim())) || null;
+        const el = find();
+        if (el) return resolve(el);
+        let attempts = 0;
+        const check = setInterval(() => {
+          const el = find();
+          if (el) { clearInterval(check); resolve(el); }
+          else if (++attempts > 8) { clearInterval(check); resolve(null); }
+        }, 300);
+      });
+      if (pagTodos) {
+        showOverlay('⚔️ A carregar todas as aldeias...');
+        sessionStorage.setItem('eos_village_pag_clicked', '1');
+        pagTodos.click(); return;
+      }
+    }
+    sessionStorage.removeItem('eos_village_pag_clicked');
+
+    showOverlay('⚔️ A ler tropas por aldeia...');
+
+    try {
+      await waitForOverviewTable();
+      const villages = readPerVillageTroops();
+      if (!villages) throw new Error('Não foi possível ler as tropas por aldeia.');
+
+      const res = await fetch(`${EOS_SERVER}/api/village-troops`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
+        body: JSON.stringify({ villages })
+      });
+      if (!res.ok) throw new Error(`Servidor: ${res.status}`);
+
+      await chrome.storage.local.set({ pendingVillageReport: false });
+      showOverlay(`✔ ${villages.length} aldeias guardadas!`, 'ok');
+      setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
+
+    } catch (err) {
+      await chrome.storage.local.set({ pendingVillageReport: false });
+      showOverlay('❌ ' + err.message, 'error');
+      setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
+    }
+    return;
+  }
+
   // Página de tropas: lê e envia para o servidor
   if (!isUnitsPage()) return;
 
@@ -496,6 +656,16 @@ window.addEventListener('message', (event) => {
         const groupName = event.data.groupName || 'Todos';
         chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
         const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`;
+        chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
+      });
+      return;
+    }
+
+    if (event.data.type === 'EOS_FORCE_VILLAGE_REPORT') {
+      getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
+        if (!eosToken || !eosWorld) return;
+        chrome.storage.local.set({ pendingVillageReport: true });
+        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages`;
         chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
       });
       return;
