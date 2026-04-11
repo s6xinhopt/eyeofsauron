@@ -122,36 +122,28 @@ function readPerVillageTroops() {
   });
   if (!unitColMap.length) return null;
 
-  // Descobre o offset: nas data rows, a primeira coluna é o label (index 0)
-  // Os valores de tropas começam no index 1
-  // No header, a primeira unidade está em firstUnitIdx
-  // Offset = firstUnitIdx - 1 (data rows não têm as colunas extra antes das unidades)
-  const dataOffset = firstUnitIdx - 1;
-  // Converte headerIndex para dataIndex
+  // O header tem 13 colunas: [Aldeia][checkbox][spear][sword]...[militia][Ação]
+  // Row "as suas próprias" (com link aldeia): 13 cells = [aldeia_link][label][spear][sword]...[militia][Ação]
+  // Row "total": 12 cells = [label][spear][sword]...[militia][Ação]
+  // A coluna "Ação" é a última. As unidades estão antes dela.
+  // Usamos posição reversa: a última coluna (Ação) está em cells.length-1
+  // A posição de cada unidade a partir do final é constante
+  const headerLen = headerCells.length;
+  // Para cada unidade, calcula quantas colunas está do FINAL do header
   for (const entry of unitColMap) {
-    entry.index = entry.headerIndex - dataOffset;
+    entry.fromEnd = headerLen - 1 - entry.headerIndex;
   }
 
   const allRows = Array.from(table.querySelectorAll('tr'));
   let currentVillage = null;
 
-  // Função auxiliar: lê tropas de uma row usando o offset correcto
-  function readTroopsFromCells(cells, numCells) {
+  function readTroopsFromRow(cells) {
     const troops = {};
-    // Rows com nome de aldeia têm 13 cells (1 extra no início)
-    // Rows sem nome (total, na aldeia, etc.) têm 12 cells
-    // O offset é: numCells - headerUnitCount - colunasDepois
-    // Mais simples: as tropas estão sempre nas ÚLTIMAS (unitColMap.length + 1) colunas
-    // A última coluna é "Ação", antes dela estão as unidades
-    // Contamos de trás para frente usando o header
-    const lastUnitHeaderIdx = unitColMap[unitColMap.length - 1].headerIndex;
-    const colsAfterLastUnit = headerCells.length - 1 - lastUnitHeaderIdx; // colunas depois da última unidade no header
-    for (const { unit, headerIndex } of unitColMap) {
-      // Posição desde o final: headerCells.length - 1 - headerIndex
-      const fromEnd = headerCells.length - 1 - headerIndex;
-      const dataIdx = numCells - 1 - fromEnd;
-      if (dataIdx >= 0 && dataIdx < numCells) {
-        const raw = (cells[dataIdx].textContent || '').replace(/\./g, '').replace(/\s/g, '');
+    const len = cells.length;
+    for (const { unit, fromEnd } of unitColMap) {
+      const idx = len - 1 - fromEnd;
+      if (idx >= 0 && idx < len) {
+        const raw = (cells[idx].textContent || '').replace(/\./g, '').replace(/\s/g, '');
         const v = parseInt(raw.replace(/\D/g, '')) || 0;
         if (v > 0) troops[unit] = v;
       }
@@ -163,13 +155,13 @@ function readPerVillageTroops() {
     const cells = Array.from(row.querySelectorAll('td'));
     if (cells.length < 3) continue;
 
-    // Detecta se a row contém um link de aldeia
+    // Row com link de aldeia = header de aldeia + "as suas próprias"
     const villageLink = row.querySelector('a[href*="screen=info_village"], a[href*="village="]');
     if (villageLink) {
       const href = villageLink.getAttribute('href') || '';
       const idMatch = href.match(/village=(\d+)/) || href.match(/id=(\d+)/);
       if (idMatch) {
-        if (currentVillage && currentVillage.troops_total) {
+        if (currentVillage && (currentVillage.troops_total || currentVillage.troops_own)) {
           villages.push(currentVillage);
         }
         const text = (villageLink.textContent || '').trim();
@@ -179,26 +171,22 @@ function readPerVillageTroops() {
           village_name: text.replace(/\s*\(\d+\|\d+\)\s*/, '').trim(),
           village_coords: coordMatch ? coordMatch[1] : null,
           troops_total: null,
-          troops_own: null
+          troops_own: readTroopsFromRow(cells)
         };
-        // Esta row também contém "as suas próprias" — ler tropas
-        currentVillage.troops_own = readTroopsFromCells(cells, cells.length);
         continue;
       }
     }
 
     if (!currentVillage) continue;
 
-    // Identifica o tipo de row pelo texto das primeiras cells
-    const rowText = cells.map(c => (c.textContent || '').replace(/\u00a0/g, ' ').trim().toLowerCase()).join(' ');
-    const isTotal = cells[0] && (cells[0].textContent || '').trim().toLowerCase() === 'total';
-
-    if (isTotal) {
-      currentVillage.troops_total = readTroopsFromCells(cells, cells.length);
+    // Row "total"
+    const firstCell = (cells[0].textContent || '').replace(/\u00a0/g, ' ').trim().toLowerCase();
+    if (firstCell === 'total') {
+      currentVillage.troops_total = readTroopsFromRow(cells);
     }
   }
 
-  if (currentVillage && currentVillage.troops_total) {
+  if (currentVillage && (currentVillage.troops_total || currentVillage.troops_own)) {
     villages.push(currentVillage);
   }
 
