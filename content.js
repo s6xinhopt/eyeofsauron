@@ -163,9 +163,14 @@ function readPerVillageTroops() {
     const cells = Array.from(row.querySelectorAll('td'));
     if (cells.length < 3) continue;
 
-    const label = (cells[0].textContent || '').trim().toLowerCase();
-    const isTotal = label === 'total' || label === 'total:';
-    const isOwn = label.includes('suas') || label.includes('próprias') || label.includes('proprias');
+    // Normaliza label: verifica as primeiras 2 cells para o label da row
+    let rawLabel = '';
+    for (let i = 0; i < Math.min(cells.length, 2); i++) {
+      const t = (cells[i].textContent || '').replace(/\u00a0/g, ' ').trim().toLowerCase();
+      if (t.length > 0 && t.length < 30) { rawLabel = t; break; }
+    }
+    const isTotal = rawLabel === 'total' || rawLabel === 'total:';
+    const isOwn = rawLabel.includes('suas') || rawLabel.includes('pr\u00f3prias') || rawLabel.includes('proprias');
 
     if (isTotal || isOwn) {
       const troops = {};
