@@ -7,17 +7,12 @@ const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 
 function isUnitsPage() {
   const p = new URLSearchParams(window.location.search);
-  return p.get('screen') === 'place' && p.get('mode') === 'call';
+  return p.get('screen') === 'overview_villages' && p.get('mode') === 'units';
 }
 
 function isGroupsPage() {
   const p = new URLSearchParams(window.location.search);
   return p.get('screen') === 'overview_villages' && p.get('mode') === 'groups';
-}
-
-function isOverviewPage() {
-  const p = new URLSearchParams(window.location.search);
-  return p.get('screen') === 'overview_villages' && !p.get('mode');
 }
 
 async function getStorage(...keys) {
@@ -39,31 +34,23 @@ const OFFENSE_UNITS = ['axe','light','ram','catapult','marcher'];
 const DEFENSE_UNITS = ['spear','sword','heavy','catapult','archer'];
 
 function readTroops() {
-  // Mesmo método do Support Sender: lê #village_troup_list com data-unit
-  const table = document.querySelector('#village_troup_list');
-  if (!table) return null;
-
-  const rows = Array.from(table.querySelectorAll('tbody tr'));
-  if (!rows.length) return null;
-
-  const totals = {};
-  for (const unit of TROOP_NAMES) totals[unit] = 0;
-
-  rows.forEach(row => {
-    for (const unit of TROOP_NAMES) {
-      const cell = row.querySelector(`[data-unit='${unit}']`);
-      if (!cell) continue;
-      const v = parseInt((cell.textContent || '').replace(/\D/g, '')) || 0;
-      totals[unit] = (totals[unit] || 0) + v;
+  // Soma as tropas próprias de todas as aldeias (linha "as suas próprias")
+  // a partir dos dados per-village já lidos
+  // Fallback: tenta #village_troup_list (mass support) ou tabela overview
+  const villages = readPerVillageTroops();
+  if (villages && villages.length > 0) {
+    const totals = {};
+    for (const unit of TROOP_NAMES) totals[unit] = 0;
+    for (const v of villages) {
+      const source = v.troops_own || v.troops_total || {};
+      for (const unit of TROOP_NAMES) {
+        totals[unit] += source[unit] || 0;
+      }
     }
-  });
-
-  // Remove unidades com 0 para não poluir o snapshot
-  for (const unit of TROOP_NAMES) {
-    if (!totals[unit]) delete totals[unit];
+    for (const unit of TROOP_NAMES) { if (!totals[unit]) delete totals[unit]; }
+    return Object.keys(totals).length ? totals : null;
   }
-
-  return Object.keys(totals).length ? totals : null;
+  return null;
 }
 
 // Classifica cada aldeia em categorias (mesma lógica do Troops Counter)
@@ -444,7 +431,7 @@ async function checkTroopConfirmation() {
       pendingTroopGroupId: data.pendingTroopConfirmGroupId || '0',
       pendingTroopGroupName: groupName
     });
-    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`, active: false });
+    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units`, active: false });
   });
 
   document.getElementById('eos-confirm-refuse').addEventListener('click', async () => {
@@ -488,61 +475,7 @@ async function main() {
     return;
   }
 
-  // Página overview: lê tropas por aldeia
-  if (isOverviewPage()) {
-    const { pendingVillageReport, eosToken } = await getStorage('pendingVillageReport', 'eosToken');
-    if (!pendingVillageReport || !eosToken) return;
-
-    // Paginação: clicar em [todos]
-    const pagClicked = sessionStorage.getItem('eos_village_pag_clicked') === '1';
-    if (!pagClicked) {
-      const pagTodos = await new Promise(resolve => {
-        const find = () => Array.from(document.querySelectorAll('a.paged-nav-item'))
-          .find(a => /todos/i.test(a.textContent.trim())) || null;
-        const el = find();
-        if (el) return resolve(el);
-        let attempts = 0;
-        const check = setInterval(() => {
-          const el = find();
-          if (el) { clearInterval(check); resolve(el); }
-          else if (++attempts > 8) { clearInterval(check); resolve(null); }
-        }, 300);
-      });
-      if (pagTodos) {
-        showOverlay('⚔️ A carregar todas as aldeias...');
-        sessionStorage.setItem('eos_village_pag_clicked', '1');
-        pagTodos.click(); return;
-      }
-    }
-    sessionStorage.removeItem('eos_village_pag_clicked');
-
-    showOverlay('⚔️ A ler tropas por aldeia...');
-
-    try {
-      await waitForOverviewTable();
-      const villages = readPerVillageTroops();
-      if (!villages) throw new Error('Não foi possível ler as tropas por aldeia.');
-
-      const res = await fetch(`${EOS_SERVER}/api/village-troops`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
-        body: JSON.stringify({ villages })
-      });
-      if (!res.ok) throw new Error(`Servidor: ${res.status}`);
-
-      await chrome.storage.local.set({ pendingVillageReport: false });
-      showOverlay(`✔ ${villages.length} aldeias guardadas!`, 'ok');
-      setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
-
-    } catch (err) {
-      await chrome.storage.local.set({ pendingVillageReport: false });
-      showOverlay('❌ ' + err.message, 'error');
-      setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 3000);
-    }
-    return;
-  }
-
-  // Página de tropas: lê e envia para o servidor
+  // Página de tropas (overview_villages&mode=units): lê agregado + por aldeia
   if (!isUnitsPage()) return;
 
   const data = await getStorage('pendingTroopRequest', 'pendingTroopGroupId', 'pendingTroopGroupName', 'eosToken');
@@ -593,21 +526,43 @@ async function main() {
   showOverlay('⚔️ A ler tropas...');
 
   try {
-    await waitForTable();
+    await waitForOverviewTable();
+
+    // Lê tropas agregadas (totais por unidade)
     const troops = readTroops();
-    if (!troops) throw new Error('Não foi possível ler a tabela de tropas.');
     const classification = classifyVillages();
 
-    const res = await fetch(`${EOS_SERVER}/api/report`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ troops, classification, groupId, groupName })
-    });
+    // Lê tropas por aldeia (total + próprias)
+    const villages = readPerVillageTroops();
 
-    if (!res.ok) throw new Error(`Servidor: ${res.status}`);
+    if (!troops && !villages) throw new Error('Não foi possível ler a tabela de tropas.');
+
+    // Envia agregado + por aldeia em paralelo
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const promises = [];
+
+    if (troops) {
+      promises.push(fetch(`${EOS_SERVER}/api/report`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ troops, classification, groupId, groupName })
+      }));
+    }
+
+    if (villages && villages.length > 0) {
+      promises.push(fetch(`${EOS_SERVER}/api/village-troops`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ villages })
+      }));
+    }
+
+    const results = await Promise.all(promises);
+    for (const res of results) {
+      if (!res.ok) throw new Error(`Servidor: ${res.status}`);
+    }
 
     await chrome.storage.local.set({ pendingTroopRequest: false });
-    showOverlay('✔ Tropas guardadas!', 'ok');
+    const msg = villages ? `✔ Tropas guardadas! (${villages.length} aldeias)` : '✔ Tropas guardadas!';
+    showOverlay(msg, 'ok');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
 
   } catch (err) {
@@ -655,21 +610,13 @@ window.addEventListener('message', (event) => {
         const groupId   = event.data.groupId   || '0';
         const groupName = event.data.groupName || 'Todos';
         chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
-        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`;
+        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units`;
         chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
       });
       return;
     }
 
-    if (event.data.type === 'EOS_FORCE_VILLAGE_REPORT') {
-      getStorage('eosToken', 'eosWorld').then(({ eosToken, eosWorld }) => {
-        if (!eosToken || !eosWorld) return;
-        chrome.storage.local.set({ pendingVillageReport: true });
-        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages`;
-        chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
-      });
-      return;
-    }
+
   }
 
   // Mensagens do page_reader (mesmo window)

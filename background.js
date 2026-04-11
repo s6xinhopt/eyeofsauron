@@ -145,7 +145,7 @@ async function triggerReport(groupId, groupName) {
   }
 
   // Mass support page — lê tropas via #village_troup_list (mesmo método do Support Sender)
-  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=place&mode=call`;
+  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units`;
   await chrome.storage.local.set({
     pendingTroopRequest:   true,
     pendingTroopGroupId:   groupId || '0',
