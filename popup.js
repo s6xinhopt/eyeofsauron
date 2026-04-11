@@ -9,6 +9,7 @@ async function api(path, opts) {
     ...opts,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}`, ...(opts?.headers || {}) },
   });
+  if (res.status === 402) throw new Error('SUBSCRIPTION_INACTIVE');
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
