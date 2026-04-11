@@ -98,25 +98,39 @@ function readPerVillageTroops() {
   if (!table) return null;
 
   // Descobre o mapeamento coluna → unidade a partir do header
-  // Ignora militia (unit_militia) — raramente usado
+  // O header pode ter colunas extra (checkbox, nome aldeia) que não existem nas data rows
+  // As data rows têm 1 coluna a menos (sem o checkbox do header)
   const headerRow = table.querySelector('tr');
   if (!headerRow) return null;
   const headerCells = Array.from(headerRow.querySelectorAll('th, td'));
+
+  // Conta quantas colunas "vazias" existem antes da primeira unidade
+  // para calcular o offset entre header e data rows
+  let firstUnitIdx = -1;
   const unitColMap = []; // { unit, index }
   headerCells.forEach((cell, idx) => {
     const img = cell.querySelector('img[src*="unit_"]');
     if (!img) return;
+    if (firstUnitIdx === -1) firstUnitIdx = idx;
     const src = img.getAttribute('src') || '';
-    // Encontra qual unidade corresponde a esta coluna
     for (const unit of TROOP_NAMES) {
       if (src.includes(`unit_${unit}`)) {
-        unitColMap.push({ unit, index: idx });
+        unitColMap.push({ unit, headerIndex: idx });
         return;
       }
     }
-    // Se não está em TROOP_NAMES (ex: militia), ignora mas o index é registado para não causar offset
   });
   if (!unitColMap.length) return null;
+
+  // Descobre o offset: nas data rows, a primeira coluna é o label (index 0)
+  // Os valores de tropas começam no index 1
+  // No header, a primeira unidade está em firstUnitIdx
+  // Offset = firstUnitIdx - 1 (data rows não têm as colunas extra antes das unidades)
+  const dataOffset = firstUnitIdx - 1;
+  // Converte headerIndex para dataIndex
+  for (const entry of unitColMap) {
+    entry.index = entry.headerIndex - dataOffset;
+  }
 
   const allRows = Array.from(table.querySelectorAll('tr'));
   let currentVillage = null;
