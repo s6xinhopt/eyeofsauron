@@ -75,8 +75,9 @@ async function syncSchedules(token, checkMissed = false) {
     await chrome.storage.local.set({ autoUpdateSchedules: schedules });
     setupAlarms(schedules);
 
-    // Verifica se algum agendamento foi falhado enquanto o PC estava desligado
-    if (checkMissed && schedules && schedules.length > 0) {
+    // Verifica se algum agendamento foi falhado enquanto o PC estava desligado (só uma vez)
+    if (checkMissed && !syncSchedules._checked && schedules && schedules.length > 0) {
+      syncSchedules._checked = true;
       const lastReportTime = last_report ? new Date(last_report).getTime() : 0;
       const now = new Date();
 
