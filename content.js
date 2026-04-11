@@ -757,7 +757,7 @@ let bunkTypes = [...DEFAULT_BUNK_TYPES];
 function makeShieldElement(color) {
   const el = document.createElement('div');
   el.textContent = '🛡️';
-  el.style.cssText = `font-size:10px;line-height:16px;width:16px;height:16px;text-align:center;border-radius:50%;background:${color};box-shadow:0 1px 3px rgba(0,0,0,.5)`;
+  el.style.cssText = `font-size:9px;line-height:14px;width:14px;height:14px;text-align:center;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 0 4px ${color}88,0 1px 3px rgba(0,0,0,.6)`;
   return el;
 }
 
@@ -833,17 +833,16 @@ function injectMapSettingsButton() {
 
     clearInterval(waitBtn);
 
-    // Cria botão EOS settings
+    // Cria botão EOS settings — usa o GIF do olho de Sauron
     const btn = document.createElement('div');
     btn.id = 'eos-map-settings-btn';
     btn.title = 'Eye of Sauron - Definições do Mapa';
-    btn.style.cssText = `position:absolute;top:4px;right:4px;width:28px;height:28px;z-index:99999;cursor:pointer;
-      background:linear-gradient(135deg,#4a3828,#382818);border:1px solid #e8783050;border-radius:6px;
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 2px 8px rgba(0,0,0,0.4);transition:all .15s`;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8a030" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
-    btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.1)'; });
-    btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#e8502040'; btn.style.transform = ''; });
+    btn.style.cssText = `position:absolute;top:6px;right:6px;width:32px;height:32px;z-index:99999;cursor:pointer;
+      background-image:url('${chrome.runtime.getURL('background/eye_of_sauron.gif')}');background-size:cover;
+      border:2px solid #c0a060;border-radius:50%;
+      box-shadow:0 0 10px rgba(232,120,48,0.4),0 2px 8px rgba(0,0,0,0.5);transition:all .2s`;
+    btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.15)'; btn.style.boxShadow = '0 0 16px rgba(232,120,48,0.6),0 2px 8px rgba(0,0,0,0.5)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#c0a060'; btn.style.transform = ''; btn.style.boxShadow = '0 0 10px rgba(232,120,48,0.4),0 2px 8px rgba(0,0,0,0.5)'; });
     btn.addEventListener('click', toggleMapSettingsPanel);
     mapEl.style.position = 'relative';
     mapEl.appendChild(btn);
@@ -1062,7 +1061,7 @@ function placeShields() {
     shield.title = bt.name + ' (' + coordKey + ')';
     shield.className = 'eos-shield-icon';
     const delay = (Math.random() * 2).toFixed(1);
-    shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 19}px;top:${top - 6}px;animation-delay:${delay}s`;
+    shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 20}px;top:${top - 5}px;animation-delay:${delay}s`;
     domVillage.parentNode.insertBefore(shield, domVillage);
   }
 }
