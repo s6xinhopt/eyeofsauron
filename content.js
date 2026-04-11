@@ -698,114 +698,84 @@ async function fetchMapData(token) {
 
 function placeShields() {
   if (!mapVillageData || mapVillageData.size === 0) return;
-  if (mapCenterX === 0 && mapCenterY === 0) return; // Ainda não calculou o centro
 
-  const mapEl = document.getElementById('map');
-  if (!mapEl) return;
+  const container = document.getElementById('map_container');
+  if (!container) return;
 
   const fieldW = 53;
   const fieldH = 38;
-  const mapW = mapEl.offsetWidth;
-  const mapH = mapEl.offsetHeight;
-  const halfW = mapW / 2;
-  const halfH = mapH / 2;
 
-  if (!mapOverlayEl) {
-    mapOverlayEl = document.createElement('div');
-    mapOverlayEl.id = 'eos-map-shield-overlay';
-    mapOverlayEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99999;overflow:hidden';
-    mapEl.appendChild(mapOverlayEl);
-  }
-
+  // Bunkered coords set para lookup rápido
+  const bunkeredSet = new Set();
   for (const [coords, v] of mapVillageData) {
     const t = v.troops_total || {};
-    const bunkered = (t.spear || 0) >= 10000 && (t.sword || 0) >= 10000;
-    if (!bunkered) {
-      if (shieldElements[coords]) shieldElements[coords].style.display = 'none';
-      continue;
+    if ((t.spear || 0) >= 10000 && (t.sword || 0) >= 10000) bunkeredSet.add(coords);
+  }
+  if (bunkeredSet.size === 0) return;
+
+  // Percorre todos os sectores (DIVs filhos directos do container)
+  const sectors = container.children;
+  for (let si = 0; si < sectors.length; si++) {
+    const sector = sectors[si];
+    if (sector.tagName !== 'DIV') continue;
+
+    const sectorLeft = parseFloat(sector.style.left) || 0;
+    const sectorTop = parseFloat(sector.style.top) || 0;
+
+    // Percorre imagens de aldeias dentro do sector
+    const imgs = sector.querySelectorAll('img[src*="n_v"]');
+    for (const img of imgs) {
+      const imgLeft = parseFloat(img.style.left) || 0;
+      const imgTop = parseFloat(img.style.top) || 0;
+
+      // Coordenada absoluta em pixels
+      const absX = sectorLeft + imgLeft;
+      const absY = sectorTop + imgTop;
+
+      // Coordenada do mundo
+      const vx = Math.round(absX / fieldW);
+      const vy = Math.round(absY / fieldH);
+      const coordKey = vx + '|' + vy;
+
+      if (!bunkeredSet.has(coordKey)) continue;
+      if (shieldElements[coordKey]) continue; // Já tem escudo
+
+      // Adiciona escudo como sibling no mesmo sector
+      const shield = document.createElement('img');
+      shield.src = SHIELD_SVG;
+      shield.dataset.eosShield = coordKey;
+      shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${imgLeft}px;top:${imgTop - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
+      sector.appendChild(shield);
+      shieldElements[coordKey] = shield;
     }
-
-    const [vx, vy] = coords.split('|').map(Number);
-    if (isNaN(vx) || isNaN(vy)) continue;
-
-    // Posição relativa ao centro do viewport
-    const px = (vx - mapCenterX) * fieldW + halfW - 9;
-    const py = (vy - mapCenterY) * fieldH + halfH - 9;
-
-    // Fora do viewport
-    if (px < -20 || py < -20 || px > mapW + 20 || py > mapH + 20) {
-      if (shieldElements[coords]) shieldElements[coords].style.display = 'none';
-      continue;
-    }
-
-    if (!shieldElements[coords]) {
-      const el = document.createElement('img');
-      el.src = SHIELD_SVG;
-      el.style.cssText = 'position:absolute;width:18px;height:18px;pointer-events:none;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))';
-      mapOverlayEl.appendChild(el);
-      shieldElements[coords] = el;
-    }
-    shieldElements[coords].style.left = px + 'px';
-    shieldElements[coords].style.top = py + 'px';
-    shieldElements[coords].style.display = '';
   }
 }
 
-// Tracking do centro do mapa via page_reader ou polling do container
-let mapCenterX = 0, mapCenterY = 0;
-
 function startShieldTracking() {
-  if (!mapVillageData) return;
-
-  // Calcula o centro a partir da posição do container
-  const fieldW = 53;
-  const fieldH = 38;
-
-  function update() {
-    const container = document.getElementById('map_container');
-    const mapEl = document.getElementById('map');
-    if (!container || !mapEl) return;
-
-    const cLeft = parseFloat(container.style.left) || 0;
-    const cTop = parseFloat(container.style.top) || 0;
-    const mapW = mapEl.offsetWidth;
-    const mapH = mapEl.offsetHeight;
-
-    // O centro do viewport em coordenadas do mundo:
-    // O ponto central do #map (mapW/2, mapH/2) corresponde a qual coord?
-    // container.left + coord_x * fieldW = posição no ecrã
-    // Para o centro do mapa: cLeft + centerX * fieldW = mapW/2
-    // centerX = (mapW/2 - cLeft) / fieldW
-    const newCX = Math.round((mapW / 2 - cLeft) / fieldW);
-    const newCY = Math.round((mapH / 2 - cTop) / fieldH);
-
-    if (newCX !== mapCenterX || newCY !== mapCenterY) {
-      mapCenterX = newCX;
-      mapCenterY = newCY;
-      placeShields();
-    }
-  }
-
-  setInterval(update, 50);
-  update();
+  // Re-scan periodicamente para apanhar novos sectores carregados ao fazer pan
+  setInterval(placeShields, 2000);
 }
 
 function handleMapMouseMove(e) {
   if (!mapVillageData || mapVillageData.size === 0) return;
 
+  const container = document.getElementById('map_container');
   const mapEl = document.getElementById('map');
-  if (!mapEl) return;
-  const mapRect = mapEl.getBoundingClientRect();
+  if (!container || !mapEl) return;
+
   const fieldW = 53;
   const fieldH = 38;
+  const mapRect = mapEl.getBoundingClientRect();
+  const containerLeft = parseFloat(container.style.left) || 0;
+  const containerTop = parseFloat(container.style.top) || 0;
 
-  // Posição do rato relativa ao #map
-  const mx = e.clientX - mapRect.left;
-  const my = e.clientY - mapRect.top;
+  // Posição do rato em coordenadas absolutas do mapa
+  const absX = e.clientX - mapRect.left - containerLeft;
+  const absY = e.clientY - mapRect.top - containerTop;
 
-  // Calcula coordenada do grid usando o centro derivado do container
-  const gx = Math.floor((mx - mapRect.width / 2) / fieldW + mapCenterX);
-  const gy = Math.floor((my - mapRect.height / 2) / fieldH + mapCenterY);
+  // Coordenada do grid
+  const gx = Math.floor(absX / fieldW);
+  const gy = Math.floor(absY / fieldH);
   const coordKey = `${gx}|${gy}`;
 
   const v = mapVillageData.get(coordKey);
