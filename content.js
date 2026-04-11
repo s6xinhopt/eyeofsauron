@@ -644,10 +644,18 @@ let shieldElements = {}; // coordKey → DOM element
 let eosMapEnabled = true;
 
 // Configuração de bunk types (guardada no storage)
+// Pop defensiva por unidade: spear=1, sword=1, heavy=6
+const DEF_POP = { spear: 1, sword: 1, heavy: 6 };
+
+function calcDefPop(troops) {
+  if (!troops) return 0;
+  return (troops.spear || 0) * DEF_POP.spear + (troops.sword || 0) * DEF_POP.sword + (troops.heavy || 0) * DEF_POP.heavy;
+}
+
 const DEFAULT_BUNK_TYPES = [
-  { id: 'heavy_bunk', name: 'Bunk Pesado', color: '#4caf50', spear: 15000, sword: 15000, enabled: true },
-  { id: 'light_bunk', name: 'Bunk Leve', color: '#ff9800', spear: 10000, sword: 10000, enabled: true },
-  { id: 'nuke_village', name: 'Nuke', color: '#f44336', axe: 5000, light: 2000, ram: 200, enabled: true },
+  { id: 'heavy_bunk', name: 'Bunk Pesado', color: '#4caf50', minDefPop: 100000, enabled: true },
+  { id: 'medium_bunk', name: 'Bunk Médio', color: '#ff9800', minDefPop: 45000, enabled: true },
+  { id: 'light_bunk', name: 'Bunk Leve', color: '#f44336', minDefPop: 20000, enabled: true },
 ];
 let bunkTypes = [...DEFAULT_BUNK_TYPES];
 
@@ -657,15 +665,11 @@ function makeShieldSvg(color) {
 
 function classifyVillageForMap(troopsTotal) {
   if (!troopsTotal) return null;
-  // Verifica bunk types por prioridade (primeiro match)
+  const defPop = calcDefPop(troopsTotal);
+  // Bunk types ordenados por prioridade (primeiro match = mais exigente primeiro)
   for (const bt of bunkTypes) {
     if (!bt.enabled) continue;
-    let matches = true;
-    for (const [unit, threshold] of Object.entries(bt)) {
-      if (['id','name','color','enabled'].includes(unit)) continue;
-      if ((troopsTotal[unit] || 0) < threshold) { matches = false; break; }
-    }
-    if (matches) return bt;
+    if (defPop >= (bt.minDefPop || 0)) return bt;
   }
   return null;
 }
@@ -757,8 +761,6 @@ function buildSettingsPanelHTML() {
   const toggleBg = eosMapEnabled ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
 
   const unitPng = (u) => chrome.runtime.getURL(`png/unit_${u}.png`);
-  const ALL_UNITS = ['spear','sword','axe','spy','light','heavy','ram','catapult','snob'];
-
   let html = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid #e8502030;flex-shrink:0">
       <span style="font-size:13px;font-weight:700;color:#f8c850;letter-spacing:.5px;text-transform:uppercase">Definições do Mapa</span>
@@ -777,7 +779,6 @@ function buildSettingsPanelHTML() {
 
   for (let i = 0; i < bunkTypes.length; i++) {
     const bt = bunkTypes[i];
-    const units = Object.entries(bt).filter(([k]) => !['id','name','color','enabled'].includes(k));
 
     html += `
       <div style="background:linear-gradient(135deg,#322a22,#28221c);border:1px solid #e8502025;border-left:3px solid ${bt.color};
@@ -800,24 +801,16 @@ function buildSettingsPanelHTML() {
               font-size:10px;cursor:pointer;padding:2px 6px;line-height:1">✕</button>
           </div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
-          ${units.map(([unit, val]) => `
-            <div style="display:flex;align-items:center;gap:3px;background:#1e1a14;border:1px solid #e8502020;border-radius:4px;padding:3px 6px">
-              <img src="${unitPng(unit)}" style="width:16px;height:16px" title="${unit}">
-              <input type="number" value="${val}" data-unit="${unit}" data-idx="${i}" min="0" step="1000"
-                style="width:50px;background:#141010;border:1px solid #e8502020;border-radius:3px;color:#f0e0c8;
-                font-size:10px;padding:2px 3px;outline:none;text-align:center">
-            </div>
-          `).join('')}
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:3px" data-unit-selector="${i}">
-          ${ALL_UNITS.filter(u => !units.some(([eu]) => eu === u)).map(u => `
-            <img src="${unitPng(u)}" data-add-unit-img="${u}" data-idx="${i}" title="Adicionar ${u}"
-              style="width:16px;height:16px;opacity:.25;cursor:pointer;border-radius:2px;padding:1px;
-              border:1px solid transparent;transition:all .15s"
-              onmouseenter="this.style.opacity='.7';this.style.borderColor='#e8502040'"
-              onmouseleave="this.style.opacity='.25';this.style.borderColor='transparent'">
-          `).join('')}
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;align-items:center;gap:4px">
+            <img src="${unitPng('spear')}" style="width:14px;height:14px;opacity:.6" title="Lanceiros (1 pop)">
+            <img src="${unitPng('sword')}" style="width:14px;height:14px;opacity:.6" title="Espadachins (1 pop)">
+            <img src="${unitPng('heavy')}" style="width:14px;height:14px;opacity:.6" title="Cavalaria Pesada (6 pop)">
+          </div>
+          <span style="font-size:10px;color:#b09878">Pop Def ≥</span>
+          <input type="number" value="${bt.minDefPop || 0}" data-field="minDefPop" data-idx="${i}" min="0" step="5000"
+            style="width:70px;background:#141010;border:1px solid #e8502020;border-radius:3px;color:#f0e0c8;
+            font-size:12px;padding:3px 5px;outline:none;text-align:center;font-weight:600">
         </div>
       </div>
     `;
@@ -856,7 +849,7 @@ function attachSettingsEvents(panel) {
     }
   });
 
-  // Color/name/enabled changes
+  // Color/name/enabled/minDefPop changes
   panel.querySelectorAll('[data-idx]').forEach(input => {
     const idx = parseInt(input.dataset.idx);
     if (input.dataset.field === 'color') {
@@ -865,12 +858,8 @@ function attachSettingsEvents(panel) {
       input.addEventListener('input', () => { bunkTypes[idx].name = input.value; });
     } else if (input.dataset.field === 'enabled') {
       input.addEventListener('change', () => { bunkTypes[idx].enabled = input.checked; });
-    } else if (input.dataset.unit) {
-      input.addEventListener('change', () => {
-        const val = parseInt(input.value) || 0;
-        if (val > 0) bunkTypes[idx][input.dataset.unit] = val;
-        else delete bunkTypes[idx][input.dataset.unit];
-      });
+    } else if (input.dataset.field === 'minDefPop') {
+      input.addEventListener('change', () => { bunkTypes[idx].minDefPop = parseInt(input.value) || 0; });
     }
   });
 
@@ -883,20 +872,9 @@ function attachSettingsEvents(panel) {
     });
   });
 
-  // Add unit via PNG click
-  panel.querySelectorAll('[data-add-unit-img]').forEach(img => {
-    img.addEventListener('click', () => {
-      const idx = parseInt(img.dataset.idx);
-      const unit = img.dataset.addUnitImg;
-      bunkTypes[idx][unit] = 5000;
-      toggleMapSettingsPanel();
-      toggleMapSettingsPanel();
-    });
-  });
-
   // Add new bunk type
   panel.querySelector('#eos-add-bunk-type')?.addEventListener('click', () => {
-    bunkTypes.push({ id: 'custom_' + Date.now(), name: 'Novo Tipo', color: '#8080ff', spear: 5000, sword: 5000, enabled: true });
+    bunkTypes.push({ id: 'custom_' + Date.now(), name: 'Novo Tipo', color: '#8080ff', minDefPop: 30000, enabled: true });
     toggleMapSettingsPanel();
     toggleMapSettingsPanel();
   });
