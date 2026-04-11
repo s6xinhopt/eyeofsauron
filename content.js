@@ -1016,32 +1016,30 @@ function startShieldTracking() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
-  // Detecta quando o mapa PARA de mover (mouseup/touchend no #map)
+  // Detecta quando o mapa se move — limpa escudos e recria depois de estabilizar
   let lastCx = 0, lastCy = 0;
+  let redrawTimer = null;
+
   setInterval(() => {
     const cx = parseInt(mapEl.getAttribute('data-eos-cx')) || 0;
     const cy = parseInt(mapEl.getAttribute('data-eos-cy')) || 0;
-    if (cx !== lastCx || cy !== lastCy) {
+    if (Math.abs(cx - lastCx) > 0 || Math.abs(cy - lastCy) > 0) {
       lastCx = cx; lastCy = cy;
-      // Remove escudos antigos quando o mapa se move (ficam desalinhados)
-      document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
-      shieldElements = {};
+      // Agenda recriação dos escudos (debounce)
+      if (redrawTimer) clearTimeout(redrawTimer);
+      redrawTimer = setTimeout(() => {
+        document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+        shieldElements = {};
+        placeShields();
+      }, 500);
     }
-  }, 100);
+  }, 200);
 
-  // Coloca escudos quando o mapa estabiliza
-  let stableTimer = null;
-  const container = document.getElementById('map_container');
-  if (container) {
-    const obs = new MutationObserver(() => {
-      if (stableTimer) clearTimeout(stableTimer);
-      stableTimer = setTimeout(placeShields, 300);
-    });
-    obs.observe(container, { childList: true, subtree: true });
-  }
+  // Primeiro render
+  placeShields();
 
   // Fallback periódico
-  setInterval(placeShields, 2000);
+  setInterval(placeShields, 5000);
 }
 
 function handleMapMouseMove(e) {
