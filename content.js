@@ -683,16 +683,40 @@ function showSubscriptionOverlay(sub, tribeName) {
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
 
-  // Botão de subscrição abre a página de pagamento
+  // Botão de subscrição abre o painel com a página de subscribe
   const subBtn = overlay.querySelector('#eos-subscribe-btn');
   if (subBtn) {
     subBtn.addEventListener('click', async () => {
+      overlay.remove();
       const { eosPlayerName, eosWorld, eosTribeName } = await getStorage('eosPlayerName', 'eosWorld', 'eosTribeName');
       const tribe = encodeURIComponent(eosTribeName || tribeName);
       const world = encodeURIComponent(eosWorld || '');
       const player = encodeURIComponent(eosPlayerName || '');
       const url = `${EOS_SERVER}/subscribe?tribe=${tribe}&world=${world}&player=${player}`;
-      window.open(url, '_blank');
+
+      // Abre no painel (iframe) — mesmo estilo do painel principal
+      const panelOverlay = document.createElement('div');
+      panelOverlay.id = 'eos-panel-overlay';
+      panelOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
+
+      const container = document.createElement('div');
+      container.style.cssText = 'position:relative;width:560px;max-width:95vw;height:85vh;background:#24201a;border:2px solid #e8502040;border-radius:10px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.8)';
+
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;z-index:1;background:none;border:none;color:#c0a060;font-size:20px;cursor:pointer;line-height:1';
+      closeBtn.onclick = () => panelOverlay.remove();
+
+      const iframe = document.createElement('iframe');
+      iframe.src = url;
+      iframe.style.cssText = 'width:100%;height:100%;border:none';
+
+      panelOverlay.addEventListener('click', (e) => { if (e.target === panelOverlay) panelOverlay.remove(); });
+
+      container.appendChild(closeBtn);
+      container.appendChild(iframe);
+      panelOverlay.appendChild(container);
+      document.body.appendChild(panelOverlay);
     });
   }
 }
