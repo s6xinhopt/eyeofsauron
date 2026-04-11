@@ -663,15 +663,27 @@ async function initMapOverlay() {
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
 
-  // Escuta viewport do page_reader
+  // Escuta viewport do page_reader (MAIN world)
   window.addEventListener('message', (e) => {
-    if (e.source !== window || e.data?.type !== 'EOS_MAP_VIEWPORT') return;
+    if (!e.data || e.data.type !== 'EOS_MAP_VIEWPORT') return;
     mapViewport = e.data;
     updateMapOverlay();
   });
 
-  // Tooltip via mousemove no mapa
-  document.addEventListener('mousemove', handleMapMouseMove);
+  // Pede ao page_reader para enviar o viewport (pode já ter arrancado)
+  window.postMessage({ type: 'EOS_MAP_REQUEST_VIEWPORT' }, '*');
+
+  // Tooltip via mousemove — ativa apenas quando o canvas do mapa existir
+  const waitForCanvas = setInterval(() => {
+    const canvas = document.querySelector('#map_container canvas, #map canvas, canvas');
+    if (canvas && canvas.parentElement) {
+      clearInterval(waitForCanvas);
+      canvas.parentElement.addEventListener('mousemove', handleMapMouseMove);
+      canvas.parentElement.addEventListener('mouseleave', () => {
+        if (mapTooltipEl) mapTooltipEl.style.display = 'none';
+      });
+    }
+  }, 500);
 }
 
 async function fetchMapData(token) {

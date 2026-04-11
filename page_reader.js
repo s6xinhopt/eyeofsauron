@@ -49,10 +49,12 @@
   }
   // ── Mapa: envia viewport do TWMap para o content.js ──
   if (window.game_data && window.game_data.screen === 'map') {
+    let mapAttempts = 0;
     function waitForTWMap() {
+      mapAttempts++;
       if (window.TWMap && window.TWMap.map && window.TWMap.map.scale) {
         startMapBridge();
-      } else {
+      } else if (mapAttempts < 50) {
         setTimeout(waitForTWMap, 300);
       }
     }
@@ -64,7 +66,7 @@
           const map = window.TWMap.map;
           const pos = window.TWMap.pos || [500, 500];
           const scale = map.scale || [53, 38];
-          const canvas = map.el || document.querySelector('#map canvas, canvas');
+          const canvas = document.querySelector('#map_container canvas') || document.querySelector('#map canvas') || document.querySelector('canvas');
           if (!canvas) return;
           const rect = canvas.getBoundingClientRect();
 
@@ -89,6 +91,14 @@
 
       setInterval(postViewport, 250);
       postViewport();
+
+      // Responde a pedidos do content.js
+      window.addEventListener('message', (e) => {
+        if (e.data?.type === 'EOS_MAP_REQUEST_VIEWPORT') {
+          lastState = ''; // força re-envio
+          postViewport();
+        }
+      });
     }
 
     waitForTWMap();
