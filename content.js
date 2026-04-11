@@ -431,7 +431,9 @@ async function checkTroopConfirmation() {
       pendingTroopGroupId: data.pendingTroopConfirmGroupId || '0',
       pendingTroopGroupName: groupName
     });
-    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units`, active: false });
+    const villageMatch = window.location.href.match(/village=(\d+)/);
+    const vid = villageMatch ? villageMatch[1] : '';
+    chrome.runtime.sendMessage({ type: 'CREATE_TAB', url: `https://${eosWorld}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=overview_villages&mode=units`, active: false });
   });
 
   document.getElementById('eos-confirm-refuse').addEventListener('click', async () => {
@@ -610,7 +612,9 @@ window.addEventListener('message', (event) => {
         const groupId   = event.data.groupId   || '0';
         const groupName = event.data.groupName || 'Todos';
         chrome.storage.local.set({ pendingTroopRequest: true, pendingTroopGroupId: groupId, pendingTroopGroupName: groupName });
-        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units`;
+        const villageMatch = window.location.href.match(/village=(\d+)/);
+        const vid = villageMatch ? villageMatch[1] : '';
+        const url = `https://${eosWorld}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=overview_villages&mode=units`;
         chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
       });
       return;

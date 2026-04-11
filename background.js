@@ -145,7 +145,16 @@ async function triggerReport(groupId, groupName) {
   }
 
   // Mass support page — lê tropas via #village_troup_list (mesmo método do Support Sender)
-  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units`;
+  // Extrai village ID de uma tab TW aberta
+  let villageId = '';
+  try {
+    const twTabs = await chrome.tabs.query({ url: '*://*.tribalwars.com.pt/*' });
+    for (const t of twTabs) {
+      const m = (t.url || '').match(/village=(\d+)/);
+      if (m) { villageId = m[1]; break; }
+    }
+  } catch (_) {}
+  const troopsUrl = `https://${eosWorld}.tribalwars.com.pt/game.php?${villageId ? `village=${villageId}&` : ''}screen=overview_villages&mode=units`;
   await chrome.storage.local.set({
     pendingTroopRequest:   true,
     pendingTroopGroupId:   groupId || '0',
