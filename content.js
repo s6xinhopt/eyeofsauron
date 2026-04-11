@@ -984,7 +984,7 @@ function placeShields() {
   if (bunkeredMap.size === 0) return;
 
   // Percorre todas as imgs de aldeia visíveis
-  const imgs = mapEl.querySelectorAll('img[src*="n_v"]');
+  const imgs = mapEl.querySelectorAll('img[src*="/v3.png"], img[src*="/v4.png"], img[src*="/v5.png"], img[src*="/v6.png"], img[src*="/v1.png"], img[src*="/v2.png"], img[src*="n_v"]');
   for (const img of imgs) {
     // Skip se já tem escudo
     if (img.nextElementSibling && img.nextElementSibling.dataset?.eosShield) continue;
