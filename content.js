@@ -653,7 +653,7 @@ const DEFAULT_BUNK_TYPES = [
 let bunkTypes = [...DEFAULT_BUNK_TYPES];
 
 function makeShieldSvg(color) {
-  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="${color}" stroke="#1a1a1a" stroke-width="1.5" opacity="0.9"/><path d="M10 12l2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`)}`;
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity=".4"><animate attributeName="offset" values="-0.5;1.5" dur="2s" repeatCount="indefinite"/></stop><stop offset="10%" stop-color="white" stop-opacity="0"><animate attributeName="offset" values="-0.3;1.7" dur="2s" repeatCount="indefinite"/></stop></linearGradient></defs><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="${color}" stroke="#1a1a1a" stroke-width="1.2"/><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="url(#g)"/><path d="M10 12l2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/></svg>`)}`;
 }
 
 function classifyVillageForMap(troopsTotal) {
