@@ -660,7 +660,7 @@ const DEFAULT_BUNK_TYPES = [
 let bunkTypes = [...DEFAULT_BUNK_TYPES];
 
 function makeShieldSvg(color) {
-  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity=".4"><animate attributeName="offset" values="-0.5;1.5" dur="2s" repeatCount="indefinite"/></stop><stop offset="10%" stop-color="white" stop-opacity="0"><animate attributeName="offset" values="-0.3;1.7" dur="2s" repeatCount="indefinite"/></stop></linearGradient></defs><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="${color}" stroke="#1a1a1a" stroke-width="1.2"/><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="url(#g)"/><path d="M10 12l2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/></svg>`)}`;
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 32"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity=".5"><animate attributeName="offset" values="-0.5;1.5" dur="1.8s" repeatCount="indefinite"/></stop><stop offset="15%" stop-color="white" stop-opacity="0"><animate attributeName="offset" values="-0.3;1.7" dur="1.8s" repeatCount="indefinite"/></stop></linearGradient><filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000" flood-opacity=".5"/></filter></defs><g filter="url(#s)"><path d="M14 2L3 8v7c0 6.5 4.5 12.6 11 14 6.5-1.4 11-7.5 11-14V8L14 2z" fill="${color}"/><path d="M14 2L3 8v7c0 6.5 4.5 12.6 11 14 6.5-1.4 11-7.5 11-14V8L14 2z" fill="url(#g)"/><path d="M14 4L5 9v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V9L14 4z" fill="none" stroke="white" stroke-width=".5" opacity=".3"/><path d="M10.5 15l2.5 2.5 5-5" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>`)}`;
 }
 
 function classifyVillageForMap(troopsTotal) {
@@ -677,8 +677,25 @@ function classifyVillageForMap(troopsTotal) {
   return null;
 }
 
+function injectShieldStyles() {
+  if (document.getElementById('eos-shield-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'eos-shield-styles';
+  style.textContent = `
+    @keyframes eos-float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+    .eos-shield-icon {
+      animation: eos-float 2s ease-in-out infinite;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 async function initMapOverlay() {
   if (!isMapPage()) return;
+  injectShieldStyles();
 
   const { eosToken, eosWorld } = await getStorage('eosToken', 'eosWorld');
   if (!eosToken || !eosWorld) return;
@@ -947,7 +964,8 @@ function placeShields() {
     shield.dataset.eosShield = coordKey;
     shield.title = bt.name + ' (' + coordKey + ')';
     shield.className = 'eos-shield-icon';
-    shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:20;left:${left + 18}px;top:${top - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
+    const delay = (Math.random() * 2).toFixed(1);
+    shield.style.cssText = `position:absolute;width:20px;height:22px;pointer-events:none;z-index:20;left:${left + 17}px;top:${top - 8}px;animation-delay:${delay}s`;
     domVillage.parentNode.insertBefore(shield, domVillage);
   }
 }
