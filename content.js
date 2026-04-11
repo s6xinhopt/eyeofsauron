@@ -732,9 +732,9 @@ function injectMapSettingsButton() {
     btn.title = 'Eye of Sauron - Definições do Mapa';
     btn.style.cssText = `position:absolute;top:4px;right:4px;width:28px;height:28px;z-index:99999;cursor:pointer;
       background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;
-      display:flex;align-items:center;justify-content:center;font-size:16px;
+      display:flex;align-items:center;justify-content:center;
       box-shadow:0 2px 8px rgba(0,0,0,0.5);transition:all .15s`;
-    btn.textContent = '👁';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8a030" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
     btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.1)'; });
     btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#e8502040'; btn.style.transform = ''; });
     btn.addEventListener('click', toggleMapSettingsPanel);
@@ -744,18 +744,26 @@ function injectMapSettingsButton() {
 }
 
 function toggleMapSettingsPanel() {
-  const existing = document.getElementById('eos-map-settings-panel');
+  const existing = document.getElementById('eos-map-settings-overlay');
   if (existing) { existing.remove(); return; }
+
+  // Backdrop escuro
+  const overlay = document.createElement('div');
+  overlay.id = 'eos-map-settings-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);
+    display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif`;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
   const panel = document.createElement('div');
   panel.id = 'eos-map-settings-panel';
-  panel.style.cssText = `position:absolute;top:36px;right:4px;width:320px;z-index:99999;
-    background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:8px;
-    padding:0;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;
-    box-shadow:0 8px 32px rgba(0,0,0,0.8);max-height:50vh;display:flex;flex-direction:column;overflow:hidden`;
+  panel.style.cssText = `width:360px;max-height:60vh;
+    background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:10px;
+    font-size:11px;color:#f0e0c8;display:flex;flex-direction:column;overflow:hidden;
+    box-shadow:0 12px 48px rgba(0,0,0,0.9),0 0 0 1px #e8502020`;
 
   panel.innerHTML = `<style>.eos-scroll::-webkit-scrollbar{width:5px}.eos-scroll::-webkit-scrollbar-track{background:#1a1610;border-radius:3px}.eos-scroll::-webkit-scrollbar-thumb{background:#e8502040;border-radius:3px}.eos-scroll::-webkit-scrollbar-thumb:hover{background:#e8783060}</style>` + buildSettingsPanelHTML();
-  document.getElementById('map').appendChild(panel);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
   attachSettingsEvents(panel);
 }
 
@@ -910,7 +918,7 @@ function attachSettingsEvents(panel) {
     document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
     shieldElements = {};
     if (eosMapEnabled) placeShields();
-    panel.remove();
+    document.getElementById('eos-map-settings-overlay')?.remove();
   });
 }
 
