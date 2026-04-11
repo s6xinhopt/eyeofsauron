@@ -616,7 +616,8 @@ async function main() {
     showOverlay(`⚔️ A enviar dados (${villages.length} aldeias)...`);
 
     // Envia agregado + por aldeia em paralelo
-    const hdrs = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const ver = chrome.runtime.getManifest().version;
+    const hdrs = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-EOS-Version': ver };
     const promises = [];
 
     if (Object.keys(troops).length > 0) {
@@ -1031,7 +1032,7 @@ function attachSettingsEvents(panel) {
 async function fetchMapData(token) {
   try {
     const res = await fetch(`${EOS_SERVER}/api/village-troops?tribe=true`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
     });
     if (!res.ok) return;
     const { villages } = await res.json();

@@ -5,10 +5,12 @@ let currentPlayer = null;
 async function api(path, opts) {
   const { eosToken } = await chrome.storage.local.get('eosToken');
   if (!eosToken) throw new Error('Sem token');
+  const version = chrome.runtime.getManifest().version;
   const res = await fetch(`${EOS_SERVER}${path}`, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}`, ...(opts?.headers || {}) },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}`, 'X-EOS-Version': version, ...(opts?.headers || {}) },
   });
+  if (res.status === 426) throw new Error('VERSION_OUTDATED');
   if (res.status === 402) throw new Error('SUBSCRIPTION_INACTIVE');
   if (!res.ok) throw new Error(await res.text());
   return res.json();
