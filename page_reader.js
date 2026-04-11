@@ -47,61 +47,52 @@
       window.postMessage({ type: 'EOS_GROUPS_DATA', groups }, '*');
     }
   }
-  // ── Mapa: envia viewport do TWMap para o content.js ──
-  if (window.game_data && window.game_data.screen === 'map') {
-    let mapAttempts = 0;
-    function waitForTWMap() {
-      mapAttempts++;
-      if (window.TWMap && window.TWMap.map && window.TWMap.map.scale) {
-        startMapBridge();
-      } else if (mapAttempts < 50) {
-        setTimeout(waitForTWMap, 300);
-      }
+})();
+
+// ── Mapa: envia viewport do TWMap para o content.js (fora do IIFE) ──
+(function initMapBridge() {
+  if (!window.game_data || window.game_data.screen !== 'map') return;
+
+  let attempts = 0;
+  function tryStart() {
+    attempts++;
+    if (window.TWMap && window.TWMap.map && window.TWMap.map.scale && document.getElementById('map')) {
+      run();
+    } else if (attempts < 100) {
+      setTimeout(tryStart, 200);
     }
-
-    function startMapBridge() {
-      let lastState = '';
-      function postViewport() {
-        try {
-          const map = window.TWMap.map;
-          const pos = window.TWMap.pos || [500, 500];
-          const scale = map.scale || [53, 38];
-          const mapEl = document.getElementById('map');
-          if (!mapEl) return;
-          const rect = mapEl.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) return;
-
-          const state = `${pos[0]},${pos[1]},${rect.left},${rect.top},${rect.width},${rect.height}`;
-          if (state === lastState) return;
-          lastState = state;
-
-          window.postMessage({
-            type: 'EOS_MAP_VIEWPORT',
-            centerX: pos[0],
-            centerY: pos[1],
-            fieldW: scale[0],
-            fieldH: scale[1],
-            canvasLeft: rect.left,
-            canvasTop: rect.top,
-            canvasW: rect.width,
-            canvasH: rect.height,
-            allyId: window.game_data.player.ally ? String(window.game_data.player.ally) : '0'
-          }, '*');
-        } catch (_) {}
-      }
-
-      setInterval(postViewport, 250);
-      postViewport();
-
-      // Responde a pedidos do content.js
-      window.addEventListener('message', (e) => {
-        if (e.data?.type === 'EOS_MAP_REQUEST_VIEWPORT') {
-          lastState = ''; // força re-envio
-          postViewport();
-        }
-      });
-    }
-
-    waitForTWMap();
   }
+
+  function run() {
+    let lastState = '';
+    function post() {
+      try {
+        const pos = window.TWMap.pos || [500, 500];
+        const scale = window.TWMap.map.scale || [53, 38];
+        const rect = document.getElementById('map').getBoundingClientRect();
+        if (rect.width === 0) return;
+
+        const state = `${pos[0]},${pos[1]},${rect.left|0},${rect.top|0},${rect.width|0},${rect.height|0}`;
+        if (state === lastState) return;
+        lastState = state;
+
+        window.postMessage({
+          type: 'EOS_MAP_VIEWPORT',
+          centerX: pos[0], centerY: pos[1],
+          fieldW: scale[0], fieldH: scale[1],
+          canvasLeft: rect.left, canvasTop: rect.top,
+          canvasW: rect.width, canvasH: rect.height
+        }, '*');
+      } catch (_) {}
+    }
+
+    setInterval(post, 300);
+    post();
+
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'EOS_MAP_REQUEST_VIEWPORT') { lastState = ''; post(); }
+    });
+  }
+
+  tryStart();
 })();
