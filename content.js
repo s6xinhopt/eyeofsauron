@@ -569,11 +569,11 @@ async function main() {
 
     showOverlay(`⚔️ A calcular totais (${villages.length} aldeias)...`);
 
-    // Deriva totais agregados
+    // Deriva totais agregados (apenas tropas próprias, nunca fallback para total)
     const troops = {};
     for (const unit of TROOP_NAMES) troops[unit] = 0;
     for (const v of villages) {
-      const src = v.troops_own || v.troops_total || {};
+      const src = v.troops_own || {};
       for (const unit of TROOP_NAMES) troops[unit] += src[unit] || 0;
     }
     for (const unit of TROOP_NAMES) { if (!troops[unit]) delete troops[unit]; }
@@ -581,7 +581,7 @@ async function main() {
     // Classifica aldeias
     const classification = { full_nuke: 0, semi_nuke: 0, full_def: 0, semi_def: 0, noble: 0, other: 0 };
     for (const v of villages) {
-      const t = v.troops_own || v.troops_total || {};
+      const t = v.troops_own || {};
       if ((t['snob'] || 0) >= 1) { classification.noble++; continue; }
       let offPop = 0, defPop = 0;
       for (const u of OFFENSE_UNITS) offPop += (t[u] || 0) * (POP_COST[u] || 0);
