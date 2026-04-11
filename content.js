@@ -93,43 +93,44 @@ function classifyVillages() {
 
 function readPerVillageTroops() {
   const villages = [];
-  // A tabela principal no overview_villages
   const table = document.querySelector('#units_table') || document.querySelector('table.vis.overview_table')
     || document.querySelector('#content_value table.vis');
   if (!table) return null;
 
   // Descobre o mapeamento coluna → unidade a partir do header
+  // Ignora militia (unit_militia) — raramente usado
   const headerRow = table.querySelector('tr');
   if (!headerRow) return null;
   const headerCells = Array.from(headerRow.querySelectorAll('th, td'));
-  const unitColMap = [];
+  const unitColMap = []; // { unit, index }
   headerCells.forEach((cell, idx) => {
+    const img = cell.querySelector('img[src*="unit_"]');
+    if (!img) return;
+    const src = img.getAttribute('src') || '';
+    // Encontra qual unidade corresponde a esta coluna
     for (const unit of TROOP_NAMES) {
-      if (cell.querySelector(`img[src*="unit_${unit}"]`)) {
+      if (src.includes(`unit_${unit}`)) {
         unitColMap.push({ unit, index: idx });
-        break;
+        return;
       }
     }
+    // Se não está em TROOP_NAMES (ex: militia), ignora mas o index é registado para não causar offset
   });
   if (!unitColMap.length) return null;
 
-  // Itera todas as rows procurando blocos de aldeias
   const allRows = Array.from(table.querySelectorAll('tr'));
   let currentVillage = null;
 
   for (const row of allRows) {
-    // Detecta header de aldeia: contém link para info_village ou village=XXX
+    // Detecta header de aldeia: link com village= ou info_village
     const villageLink = row.querySelector('a[href*="screen=info_village"], a[href*="village="]');
     if (villageLink) {
       const href = villageLink.getAttribute('href') || '';
-      // Extrai village_id do href
       const idMatch = href.match(/village=(\d+)/) || href.match(/id=(\d+)/);
       if (idMatch) {
-        // Guarda a aldeia anterior se tiver dados
         if (currentVillage && currentVillage.troops_total) {
           villages.push(currentVillage);
         }
-        // Extrai nome e coordenadas do texto
         const text = (villageLink.textContent || '').trim();
         const coordMatch = text.match(/\((\d+\|\d+)\)/);
         currentVillage = {
@@ -154,9 +155,12 @@ function readPerVillageTroops() {
 
     if (isTotal || isOwn) {
       const troops = {};
+      // As data rows têm as mesmas colunas que o header
+      // Usa o mapeamento direto do header (o index já inclui o offset de colunas como label, etc.)
       for (const { unit, index } of unitColMap) {
         if (index < cells.length) {
-          const v = parseInt((cells[index].textContent || '').replace(/\./g, '').replace(/\D/g, '')) || 0;
+          const raw = (cells[index].textContent || '').replace(/\./g, '').replace(/\s/g, '');
+          const v = parseInt(raw.replace(/\D/g, '')) || 0;
           if (v > 0) troops[unit] = v;
         }
       }
@@ -167,7 +171,6 @@ function readPerVillageTroops() {
     }
   }
 
-  // Última aldeia
   if (currentVillage && currentVillage.troops_total) {
     villages.push(currentVillage);
   }
