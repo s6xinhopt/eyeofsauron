@@ -690,57 +690,40 @@ function showSubscriptionOverlay(sub, tribeName) {
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
 
-  // Botão de subscrição abre página de pagamento em nova tab
+  // Botão de subscrição abre a página de planos no painel (iframe)
   const subBtn = overlay.querySelector('#eos-subscribe-btn');
   if (subBtn) {
     subBtn.addEventListener('click', async () => {
+      overlay.remove();
       const { eosPlayerName, eosWorld, eosTribeName } = await getStorage('eosPlayerName', 'eosWorld', 'eosTribeName');
       const tribe = encodeURIComponent(eosTribeName || tribeName);
       const world = encodeURIComponent(eosWorld || '');
       const player = encodeURIComponent(eosPlayerName || '');
       const url = `${EOS_SERVER}/subscribe?tribe=${tribe}&world=${world}&player=${player}`;
 
-      // Abre nova tab
-      window.open(url, '_blank');
+      const panelOverlay = document.createElement('div');
+      panelOverlay.id = 'eos-panel-overlay';
+      panelOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
 
-      // Muda o overlay para "A aguardar pagamento"
-      panel.innerHTML = `
-        <div style="font-size:36px;margin-bottom:12px">⏳</div>
-        <h2 style="font-size:18px;color:#f8c850;margin:0 0 12px;font-weight:700">A aguardar pagamento</h2>
-        <p style="font-size:13px;color:#c0b090;line-height:1.6;margin:0 0 16px">
-          Completa o pagamento na página que foi aberta.<br>
-          Após o pagamento, clica no botão abaixo.
-        </p>
-        <button id="eos-check-payment-btn" style="padding:12px 28px;background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px #e8502040">
-          Já paguei — verificar
-        </button>
-        <div style="margin-top:16px;font-size:11px;color:#807060">Clica fora para fechar</div>
-      `;
+      const container = document.createElement('div');
+      container.style.cssText = 'position:relative;width:520px;max-width:95vw;height:520px;max-height:85vh;background:#24201a;border:2px solid #e8502040;border-radius:10px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.8)';
 
-      // Botão de verificação
-      panel.querySelector('#eos-check-payment-btn')?.addEventListener('click', async () => {
-        panel.querySelector('#eos-check-payment-btn').textContent = 'A verificar...';
-        panel.querySelector('#eos-check-payment-btn').disabled = true;
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;z-index:1;background:none;border:none;color:#c0a060;font-size:20px;cursor:pointer;line-height:1';
+      closeBtn.onclick = () => panelOverlay.remove();
 
-        // Força re-auth para obter status atualizado
-        await new Promise(r => setTimeout(r, 2000));
-        const { eosSubscription } = await getStorage('eosSubscription');
-        const sub = eosSubscription || {};
+      const iframe = document.createElement('iframe');
+      iframe.src = url;
+      iframe.style.cssText = 'width:100%;height:100%;border:none;overflow:hidden';
+      iframe.scrolling = 'no';
 
-        if (sub.active) {
-          panel.innerHTML = `
-            <div style="font-size:48px;margin-bottom:12px">✅</div>
-            <h2 style="font-size:18px;color:#4caf50;margin:0 0 12px;font-weight:700">Pagamento confirmado!</h2>
-            <p style="font-size:13px;color:#c0b090;line-height:1.6;margin:0">
-              A subscrição foi ativada com sucesso.<br>Recarrega a página para começar.
-            </p>
-          `;
-          setTimeout(() => overlay.remove(), 4000);
-        } else {
-          panel.querySelector('#eos-check-payment-btn').textContent = 'Pagamento não detetado — tenta novamente';
-          panel.querySelector('#eos-check-payment-btn').disabled = false;
-        }
-      });
+      panelOverlay.addEventListener('click', (e) => { if (e.target === panelOverlay) panelOverlay.remove(); });
+
+      container.appendChild(closeBtn);
+      container.appendChild(iframe);
+      panelOverlay.appendChild(container);
+      document.body.appendChild(panelOverlay);
     });
   }
 }
