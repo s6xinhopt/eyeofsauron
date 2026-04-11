@@ -298,9 +298,8 @@ function findGroupsContainer() {
 function isGroupAlreadySelected(groupId) {
   const urlGroup = new URLSearchParams(window.location.search).get('group');
   if (groupId === '0') {
-    // "Todos" só está selecionado se a URL tem group=0 explícito
-    // (sem group= na URL não garante nada — pode ser outro grupo ativo via AJAX)
-    return urlGroup === '0';
+    // Na overview_villages, sem group= na URL = "Todos" selecionado
+    return !urlGroup || urlGroup === '0';
   }
   return urlGroup === groupId;
 }
