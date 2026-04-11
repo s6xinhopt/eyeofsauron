@@ -91,7 +91,7 @@ function classifyVillages() {
 
 // ── Leitura de tropas por aldeia (via overview_villages) ────────────────────
 
-function readPerVillageTroops() {
+function readPerVillageTroops(onProgress) {
   const villages = [];
   const table = document.querySelector('#units_table') || document.querySelector('table.vis.overview_table')
     || document.querySelector('#content_value table.vis');
@@ -151,6 +151,14 @@ function readPerVillageTroops() {
     return Object.keys(troops).length > 0 ? troops : null;
   }
 
+  // Conta total de aldeias primeiro (para a barra de progresso)
+  let totalVillageCount = 0;
+  for (const row of allRows) {
+    const firstTd = row.querySelector('td');
+    if (firstTd?.querySelector('a[href*="screen=info_village"], a[href*="village="]')) totalVillageCount++;
+  }
+
+  let villageIndex = 0;
   for (const row of allRows) {
     const cells = Array.from(row.querySelectorAll('td'));
     if (cells.length < 3) continue;
@@ -159,6 +167,8 @@ function readPerVillageTroops() {
     // O link da aldeia está sempre na PRIMEIRA célula da row
     const firstCellLink = cells[0]?.querySelector('a[href*="screen=info_village"], a[href*="village="]');
     if (firstCellLink) {
+      villageIndex++;
+      if (onProgress) onProgress(villageIndex, totalVillageCount);
       const href = firstCellLink.getAttribute('href') || '';
       const idMatch = href.match(/village=(\d+)/) || href.match(/id=(\d+)/);
       if (idMatch) {
@@ -508,12 +518,14 @@ async function main() {
 
   if (!token) return;
 
+  showOverlay(`⚔️ A preparar (grupo: ${groupName})...`);
+
   // Passo 1: clica no grupo correto (skip se já está selecionado)
   const groupClicked = sessionStorage.getItem('eos_group_clicked') === groupId;
   if (!groupClicked && !isGroupAlreadySelected(groupId)) {
+    showOverlay(`⚔️ A selecionar grupo "${groupName}"...`);
     const el = await waitForGroupElement(groupId);
     if (el) {
-      showOverlay('⚔️ A selecionar grupo...');
       sessionStorage.setItem('eos_group_clicked', groupId);
       el.click(); return;
     }
@@ -544,16 +556,21 @@ async function main() {
   }
   sessionStorage.removeItem('eos_pagination_clicked');
 
-  showOverlay('⚔️ A ler tropas...');
+  showOverlay('⚔️ A aguardar tabela...');
 
   try {
     await waitForOverviewTable();
+    showOverlay('⚔️ A ler aldeias...');
 
-    // Leitura única: tropas por aldeia
-    const villages = readPerVillageTroops();
+    // Leitura única com progresso
+    const villages = readPerVillageTroops((current, total) => {
+      showOverlay(`⚔️ A ler aldeias ${current}/${total}`);
+    });
     if (!villages || !villages.length) throw new Error('Não foi possível ler a tabela de tropas.');
 
-    // Deriva totais agregados a partir das aldeias
+    showOverlay(`⚔️ A calcular totais (${villages.length} aldeias)...`);
+
+    // Deriva totais agregados
     const troops = {};
     for (const unit of TROOP_NAMES) troops[unit] = 0;
     for (const v of villages) {
@@ -561,7 +578,8 @@ async function main() {
       for (const unit of TROOP_NAMES) troops[unit] += src[unit] || 0;
     }
     for (const unit of TROOP_NAMES) { if (!troops[unit]) delete troops[unit]; }
-    // Classifica aldeias a partir dos dados já lidos
+
+    // Classifica aldeias
     const classification = { full_nuke: 0, semi_nuke: 0, full_def: 0, semi_def: 0, noble: 0, other: 0 };
     for (const v of villages) {
       const t = v.troops_own || v.troops_total || {};
@@ -576,20 +594,22 @@ async function main() {
       else                      classification.other++;
     }
 
+    showOverlay(`⚔️ A enviar dados (${villages.length} aldeias)...`);
+
     // Envia agregado + por aldeia em paralelo
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const hdrs = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
     const promises = [];
 
-    if (troops) {
+    if (Object.keys(troops).length > 0) {
       promises.push(fetch(`${EOS_SERVER}/api/report`, {
-        method: 'POST', headers,
+        method: 'POST', headers: hdrs,
         body: JSON.stringify({ troops, classification, groupId, groupName })
       }));
     }
 
-    if (villages && villages.length > 0) {
+    if (villages.length > 0) {
       promises.push(fetch(`${EOS_SERVER}/api/village-troops`, {
-        method: 'POST', headers,
+        method: 'POST', headers: hdrs,
         body: JSON.stringify({ villages })
       }));
     }
@@ -600,8 +620,7 @@ async function main() {
     }
 
     await chrome.storage.local.set({ pendingTroopRequest: false });
-    const msg = villages ? `✔ Tropas guardadas! (${villages.length} aldeias)` : '✔ Tropas guardadas!';
-    showOverlay(msg, 'ok');
+    showOverlay(`✔ ${villages.length} aldeias guardadas!`, 'ok');
     setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
 
   } catch (err) {
