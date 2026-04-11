@@ -642,8 +642,34 @@ let mapViewport = null;
 let mapOverlayEl = null;
 let mapTooltipEl = null;
 let shieldElements = {}; // coordKey → DOM element
+let eosMapEnabled = true;
 
-const SHIELD_SVG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="#4caf50" stroke="#1a3a1a" stroke-width="1.5"/><path d="M10 12l2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
+// Configuração de bunk types (guardada no storage)
+const DEFAULT_BUNK_TYPES = [
+  { id: 'heavy_bunk', name: 'Bunker Pesado', color: '#4caf50', spear: 15000, sword: 15000, enabled: true },
+  { id: 'light_bunk', name: 'Bunker Leve', color: '#ff9800', spear: 10000, sword: 10000, enabled: true },
+  { id: 'nuke_village', name: 'Nuke', color: '#f44336', axe: 5000, light: 2000, ram: 200, enabled: true },
+];
+let bunkTypes = [...DEFAULT_BUNK_TYPES];
+
+function makeShieldSvg(color) {
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" fill="${color}" stroke="#1a1a1a" stroke-width="1.5" opacity="0.9"/><path d="M10 12l2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`)}`;
+}
+
+function classifyVillageForMap(troopsTotal) {
+  if (!troopsTotal) return null;
+  // Verifica bunk types por prioridade (primeiro match)
+  for (const bt of bunkTypes) {
+    if (!bt.enabled) continue;
+    let matches = true;
+    for (const [unit, threshold] of Object.entries(bt)) {
+      if (['id','name','color','enabled'].includes(unit)) continue;
+      if ((troopsTotal[unit] || 0) < threshold) { matches = false; break; }
+    }
+    if (matches) return bt;
+  }
+  return null;
+}
 
 async function initMapOverlay() {
   if (!isMapPage()) return;
@@ -651,22 +677,30 @@ async function initMapOverlay() {
   const { eosToken, eosWorld } = await getStorage('eosToken', 'eosWorld');
   if (!eosToken || !eosWorld) return;
 
-  // Cria elementos do overlay
+  // Carrega definições guardadas
+  const { eosBunkTypes, eosMapEnabled: savedEnabled } = await getStorage('eosBunkTypes', 'eosMapEnabled');
+  if (savedEnabled === false) eosMapEnabled = false;
+  if (Array.isArray(eosBunkTypes) && eosBunkTypes.length > 0) bunkTypes = eosBunkTypes;
+
+  // Cria tooltip
   mapTooltipEl = document.createElement('div');
   mapTooltipEl.id = 'eos-map-tooltip';
   mapTooltipEl.style.cssText = 'position:fixed;z-index:2147483647;background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;padding:8px 12px;font-family:Segoe UI,sans-serif;font-size:11px;color:#f0e0c8;pointer-events:none;display:none;max-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.8)';
   document.body.appendChild(mapTooltipEl);
 
+  // Injeta botão de settings do mapa
+  injectMapSettingsButton();
+
   // Busca dados da tribo e coloca escudos
   await fetchMapData(eosToken);
 
-  // Retry e inicia tracking de movimento do mapa
-  setTimeout(() => { placeShields(); startShieldTracking(); }, 2000);
+  // Retry e inicia tracking
+  setTimeout(() => { if (eosMapEnabled) { placeShields(); startShieldTracking(); } }, 2000);
 
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
 
-  // Tooltip via mousemove no elemento #map
+  // Tooltip via mousemove
   const waitForMapEl = setInterval(() => {
     const mapEl = document.getElementById('map');
     if (mapEl) {
@@ -677,6 +711,203 @@ async function initMapOverlay() {
       });
     }
   }, 500);
+}
+
+// ── Painel de definições do mapa ──────────────────────────────────────────
+
+function injectMapSettingsButton() {
+  // Espera pelo container de botões do mapa (ao lado do fullscreen)
+  const waitBtn = setInterval(() => {
+    // Procura a barra de ferramentas do mapa
+    const toolbar = document.querySelector('#map_toolbar, .map_toolbar')
+      || document.querySelector('#mapbig_container')?.parentElement;
+    const mapEl = document.getElementById('map');
+    if (!mapEl) return;
+
+    clearInterval(waitBtn);
+
+    // Cria botão EOS settings
+    const btn = document.createElement('div');
+    btn.id = 'eos-map-settings-btn';
+    btn.title = 'Eye of Sauron - Definições do Mapa';
+    btn.style.cssText = `position:absolute;top:4px;right:4px;width:28px;height:28px;z-index:99999;cursor:pointer;
+      background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:6px;
+      display:flex;align-items:center;justify-content:center;font-size:16px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.5);transition:all .15s`;
+    btn.textContent = '👁';
+    btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#e87830'; btn.style.transform = 'scale(1.1)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#e8502040'; btn.style.transform = ''; });
+    btn.addEventListener('click', toggleMapSettingsPanel);
+    mapEl.style.position = 'relative';
+    mapEl.appendChild(btn);
+  }, 500);
+}
+
+function toggleMapSettingsPanel() {
+  const existing = document.getElementById('eos-map-settings-panel');
+  if (existing) { existing.remove(); return; }
+
+  const panel = document.createElement('div');
+  panel.id = 'eos-map-settings-panel';
+  panel.style.cssText = `position:absolute;top:36px;right:4px;width:320px;z-index:99999;
+    background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:8px;
+    padding:16px;font-family:Segoe UI,sans-serif;font-size:12px;color:#f0e0c8;
+    box-shadow:0 8px 32px rgba(0,0,0,0.8);max-height:70vh;overflow-y:auto`;
+
+  panel.innerHTML = buildSettingsPanelHTML();
+  document.getElementById('map').appendChild(panel);
+  attachSettingsEvents(panel);
+}
+
+function buildSettingsPanelHTML() {
+  const toggleColor = eosMapEnabled ? '#4caf50' : '#555';
+  const toggleBg = eosMapEnabled ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
+
+  let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #e8502030">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">👁</span>
+        <span style="font-size:14px;font-weight:700;color:#f8c850;letter-spacing:1px">EYE OF SAURON</span>
+      </div>
+      <button id="eos-map-toggle" style="width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;
+        background:${toggleBg};position:relative;transition:background .3s">
+        <div style="width:18px;height:18px;border-radius:50%;background:#f4e8d0;position:absolute;top:3px;
+          left:${eosMapEnabled ? '23px' : '3px'};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>
+      </button>
+    </div>
+
+    <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;font-weight:700">
+      Tipos de Bunker
+    </div>
+  `;
+
+  for (let i = 0; i < bunkTypes.length; i++) {
+    const bt = bunkTypes[i];
+    const units = Object.entries(bt).filter(([k]) => !['id','name','color','enabled'].includes(k));
+
+    html += `
+      <div style="background:linear-gradient(135deg,#322a22,#28221c);border:1px solid #e8502025;border-left:3px solid ${bt.color};
+        border-radius:6px;padding:10px 12px;margin-bottom:8px" data-bunk-idx="${i}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="color" value="${bt.color}" data-field="color" data-idx="${i}"
+              style="width:24px;height:24px;border:1px solid #e8502030;border-radius:4px;cursor:pointer;background:#1a1a1a;padding:1px">
+            <input type="text" value="${bt.name}" data-field="name" data-idx="${i}"
+              style="background:#1e1a14;border:1px solid #e8502025;border-radius:4px;color:#f0e0c8;font-size:12px;
+              font-weight:600;padding:4px 8px;width:130px;outline:none">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#b09878">
+              <input type="checkbox" ${bt.enabled ? 'checked' : ''} data-field="enabled" data-idx="${i}"
+                style="accent-color:#e8a030;cursor:pointer">
+              Ativo
+            </label>
+            <button data-delete="${i}" style="background:none;border:1px solid #5a2020;color:#e04848;border-radius:3px;
+              font-size:10px;cursor:pointer;padding:2px 6px;line-height:1">✕</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${units.map(([unit, val]) => `
+            <div style="display:flex;align-items:center;gap:4px;background:#1e1a14;border:1px solid #e8502020;border-radius:4px;padding:3px 8px">
+              <span style="font-size:10px;color:#b09878;text-transform:uppercase">${unit}</span>
+              <input type="number" value="${val}" data-unit="${unit}" data-idx="${i}" min="0" step="1000"
+                style="width:60px;background:#141010;border:1px solid #e8502020;border-radius:3px;color:#f0e0c8;
+                font-size:11px;padding:2px 4px;outline:none;text-align:center">
+            </div>
+          `).join('')}
+          <button data-add-unit="${i}" style="background:none;border:1px dashed #e8502025;color:#b09878;border-radius:4px;
+            font-size:10px;cursor:pointer;padding:3px 8px">+ unidade</button>
+        </div>
+      </div>
+    `;
+  }
+
+  html += `
+    <button id="eos-add-bunk-type" style="width:100%;padding:8px;background:#1e1a14;color:#b09878;
+      border:1px dashed #e8502025;border-radius:6px;font-size:11px;cursor:pointer;margin-top:4px">
+      + Adicionar tipo de bunker
+    </button>
+    <button id="eos-save-map-settings" style="width:100%;padding:10px;margin-top:12px;
+      background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:6px;
+      font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.5px;
+      box-shadow:0 2px 12px #e8502040">
+      Guardar definições
+    </button>
+  `;
+
+  return html;
+}
+
+function attachSettingsEvents(panel) {
+  // Toggle EOS
+  panel.querySelector('#eos-map-toggle')?.addEventListener('click', () => {
+    eosMapEnabled = !eosMapEnabled;
+    toggleMapSettingsPanel();
+    toggleMapSettingsPanel(); // Re-render
+    if (!eosMapEnabled) {
+      document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+      shieldElements = {};
+    } else {
+      placeShields();
+    }
+  });
+
+  // Color/name/enabled changes
+  panel.querySelectorAll('[data-idx]').forEach(input => {
+    const idx = parseInt(input.dataset.idx);
+    if (input.dataset.field === 'color') {
+      input.addEventListener('input', () => { bunkTypes[idx].color = input.value; });
+    } else if (input.dataset.field === 'name') {
+      input.addEventListener('input', () => { bunkTypes[idx].name = input.value; });
+    } else if (input.dataset.field === 'enabled') {
+      input.addEventListener('change', () => { bunkTypes[idx].enabled = input.checked; });
+    } else if (input.dataset.unit) {
+      input.addEventListener('change', () => {
+        const val = parseInt(input.value) || 0;
+        if (val > 0) bunkTypes[idx][input.dataset.unit] = val;
+        else delete bunkTypes[idx][input.dataset.unit];
+      });
+    }
+  });
+
+  // Delete bunk type
+  panel.querySelectorAll('[data-delete]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      bunkTypes.splice(parseInt(btn.dataset.delete), 1);
+      toggleMapSettingsPanel();
+      toggleMapSettingsPanel();
+    });
+  });
+
+  // Add unit to bunk type
+  panel.querySelectorAll('[data-add-unit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.addUnit);
+      const unit = prompt('Nome da unidade (spear, sword, axe, spy, light, heavy, ram, catapult, snob):');
+      if (unit && TROOP_NAMES.includes(unit)) {
+        bunkTypes[idx][unit] = 5000;
+        toggleMapSettingsPanel();
+        toggleMapSettingsPanel();
+      }
+    });
+  });
+
+  // Add new bunk type
+  panel.querySelector('#eos-add-bunk-type')?.addEventListener('click', () => {
+    bunkTypes.push({ id: 'custom_' + Date.now(), name: 'Novo Tipo', color: '#8080ff', spear: 5000, sword: 5000, enabled: true });
+    toggleMapSettingsPanel();
+    toggleMapSettingsPanel();
+  });
+
+  // Save
+  panel.querySelector('#eos-save-map-settings')?.addEventListener('click', async () => {
+    await chrome.storage.local.set({ eosBunkTypes: bunkTypes, eosMapEnabled });
+    // Recria escudos com novas definições
+    document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+    shieldElements = {};
+    if (eosMapEnabled) placeShields();
+    panel.remove();
+  });
 }
 
 async function fetchMapData(token) {
@@ -714,13 +945,15 @@ function placeShields() {
   }
   if (!centerX) return;
 
-  // Bunkered coords set
-  const bunkeredSet = new Set();
+  if (!eosMapEnabled) return;
+
+  // Classifica aldeias por bunk type
+  const bunkeredMap = new Map(); // coordKey → bunkType
   for (const [coords, v] of mapVillageData) {
-    const t = v.troops_total || {};
-    if ((t.spear || 0) >= 10000 && (t.sword || 0) >= 10000) bunkeredSet.add(coords);
+    const bt = classifyVillageForMap(v.troops_total);
+    if (bt) bunkeredMap.set(coords, bt);
   }
-  if (bunkeredSet.size === 0) return;
+  if (bunkeredMap.size === 0) return;
 
   // Percorre todas as imgs de aldeia — encontra novas que precisam de escudo
   const imgs = mapEl.querySelectorAll('img[src*="n_v"]');
@@ -739,13 +972,14 @@ function placeShields() {
     const vy = Math.round(ry / scale[1] + centerY - mapRect.height / scale[1] / 2);
     const coordKey = vx + '|' + vy;
 
-    if (!bunkeredSet.has(coordKey)) continue;
+    const bt = bunkeredMap.get(coordKey);
+    if (!bt) continue;
 
     // Coloca escudo imediatamente após a img no mesmo sector
-    // Usa a mesma posição left/top da img — move-se com o sector
     const shield = document.createElement('img');
-    shield.src = SHIELD_SVG;
+    shield.src = makeShieldSvg(bt.color);
     shield.dataset.eosShield = coordKey;
+    shield.title = bt.name;
     const imgLeft = parseFloat(img.style.left) || 0;
     const imgTop = parseFloat(img.style.top) || 0;
     shield.style.cssText = `position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;left:${imgLeft + 18}px;top:${imgTop - 4}px;filter:drop-shadow(0 0 3px rgba(76,175,80,0.7))`;
