@@ -911,6 +911,7 @@ function classifyEnemyTroops(troopsOwned) {
   if (defPop >= ENEMY_DEF_THRESHOLDS.heavy) defSize = 'heavy';
   else if (defPop >= ENEMY_DEF_THRESHOLDS.medium) defSize = 'medium';
   else if (defPop >= ENEMY_DEF_THRESHOLDS.light) defSize = 'light';
+  else if (defPop > 0) defSize = 'weak';
 
   return { offSize, defSize, offPop, defPop };
 }
@@ -1210,7 +1211,7 @@ function placeShields() {
   let villageIds;
   try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
 
-  const DEF_BG = { light:'#4caf50', medium:'#ff9800', heavy:'#f44336' };
+  const DEF_BG = { weak:'#ffffff', light:'#4caf50', medium:'#ff9800', heavy:'#f44336' };
   const SWORD_IMG = chrome.runtime.getURL('png/unit_sword.png');
   const VILLAGE_W = 53;
   const ICON_SIZE = 14;
@@ -1259,13 +1260,6 @@ function placeShields() {
         const c1 = classifyEnemyTroops(report.troops);
         const c2 = classifyEnemyTroops(report.troops_outside);
         const defSize = (c1.defPop >= c2.defPop) ? c1.defSize : c2.defSize;
-        if (!window._eosEnemyDebug) {
-          window._eosEnemyDebug = true;
-          console.log('[EOS enemy shield]', coordKey,
-            'troops:', report.troops, 'defPop1:', c1.defPop, 'defSize1:', c1.defSize,
-            'troops_outside:', report.troops_outside, 'defPop2:', c2.defPop, 'defSize2:', c2.defSize,
-            'final:', defSize);
-        }
         if (defSize) {
           const centerX = left + VILLAGE_W / 2;
           const defIcon = document.createElement('div');
