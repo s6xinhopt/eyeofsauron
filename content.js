@@ -40,6 +40,11 @@ function isGroupsPage() {
   return p.get('screen') === 'overview_villages' && p.get('mode') === 'groups';
 }
 
+function isReportPage() {
+  const p = new URLSearchParams(window.location.search);
+  return p.get('screen') === 'report' && !!p.get('view');
+}
+
 async function getStorage(...keys) {
   return chrome.storage.local.get(keys);
 }
@@ -833,6 +838,7 @@ function isMapPage() {
 }
 
 let mapVillageData = null; // Map<coordKey, villageData>
+let enemyReportsData = null; // Map<coordKey, reportData>
 let mapViewport = null;
 let mapOverlayEl = null;
 let shieldElements = {}; // coordKey → DOM element
@@ -919,11 +925,15 @@ async function initMapOverlay() {
   // Busca dados da tribo e coloca escudos
   await fetchMapData(eosToken);
 
+  // Busca relatórios de aldeias inimigas
+  fetchEnemyReports(eosToken);
+
   // Retry e inicia tracking
   setTimeout(() => { if (eosMapEnabled) { placeShields(); startShieldTracking(); } }, 2000);
 
   // Refresh a cada 5 minutos
   setInterval(() => fetchMapData(eosToken), 300000);
+  setInterval(() => fetchEnemyReports(eosToken), 300000);
 
 }
 
@@ -1111,6 +1121,20 @@ async function fetchMapData(token) {
   } catch (_) {}
 }
 
+async function fetchEnemyReports(token) {
+  try {
+    const res = await fetch(`${EOS_SERVER}/api/enemy-reports`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
+    });
+    if (!res.ok) return;
+    const { reports } = await res.json();
+    enemyReportsData = new Map();
+    for (const r of (reports || [])) {
+      if (r.village_coords) enemyReportsData.set(r.village_coords, r);
+    }
+  } catch (_) {}
+}
+
 function getMapCenter() {
   const mapEl = document.getElementById('map');
   if (mapEl) {
@@ -1202,7 +1226,9 @@ function setupPopupObserver() {
   const EOS_TROOP_ROW_ID = 'eos-troop-info';
 
   function injectTroopInfo() {
-    if (!mapVillageData || mapVillageData.size === 0) return;
+    const hasTribeData = mapVillageData && mapVillageData.size > 0;
+    const hasEnemyData = enemyReportsData && enemyReportsData.size > 0;
+    if (!hasTribeData && !hasEnemyData) return;
 
     const popup = document.getElementById('map_popup');
     if (!popup || popup.style.display === 'none') return;
@@ -1218,17 +1244,23 @@ function setupPopupObserver() {
     const coordKey = coordMatch[1];
 
     const v = mapVillageData.get(coordKey);
-    if (!v) return;
+    const enemyReport = enemyReportsData?.get(coordKey);
+
+    // Sem dados da tribo nem relatório inimigo → nada a mostrar
+    if (!v && !enemyReport) return;
 
     // Não mostrar nas próprias aldeias (o jogo já dá essa info)
-    if (v.player_name && currentPlayerName && v.player_name === currentPlayerName) return;
+    if (v && v.player_name && currentPlayerName && v.player_name === currentPlayerName) return;
 
-    const t = v.troops_total;
-    if (!t) return;
     const units = ['spear','sword','axe','spy','light','heavy','ram','catapult','snob'];
+
+    // Decide a fonte dos dados (tribo > relatório inimigo)
+    const isEnemy = !v && !!enemyReport;
+    const t = v ? v.troops_total : enemyReport?.troops;
+    if (!t) return;
+
     const bt = classifyVillageForMap(t);
 
-    // Cria a row de tropas
     const tbody = popup.querySelector('#info_content tbody');
     if (!tbody) return;
 
@@ -1239,11 +1271,15 @@ function setupPopupObserver() {
     td.colSpan = 2;
     td.style.cssText = 'padding:4px 0;border-top:1px solid #ddd';
 
-    // Badge do tipo de bunk
+    // Badge do tipo
     let badgeHtml = '';
-    if (bt) {
-      badgeHtml = `<div style="display:inline-block;background:${bt.color};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-bottom:3px">${bt.name}</div><br>`;
+    if (isEnemy) {
+      badgeHtml = `<div style="display:inline-block;background:#c04040;color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-bottom:3px">INIMIGO</div> `;
     }
+    if (bt) {
+      badgeHtml += `<div style="display:inline-block;background:${bt.color};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-bottom:3px">${bt.name}</div>`;
+    }
+    if (badgeHtml) badgeHtml += '<br>';
 
     // Tabela de tropas com PNGs maiores
     let troopHtml = '<table style="border-collapse:collapse;width:100%;margin-top:4px"><tr>';
@@ -1258,12 +1294,24 @@ function setupPopupObserver() {
     troopHtml += '</tr></table>';
 
     // Info do jogador e atualização
-    const updatedAgo = v.updated_at ? timeAgoShort(v.updated_at) : '?';
-    const ownerHtml = `<div style="font-size:10px;color:#888;margin-top:4px">👁 ${v.player_name} · Tropas atualizadas há ${updatedAgo}</div>`;
+    let ownerHtml;
+    if (isEnemy) {
+      const ago = enemyReport.report_date ? timeAgoShort(enemyReport.report_date) : '?';
+      const ownerName = enemyReport.owner_player_name ? escapeHtml(enemyReport.owner_player_name) : '?';
+      ownerHtml = `<div style="font-size:10px;color:#888;margin-top:4px">⚔ ${ownerName} · Relatório de há ${ago}</div>`;
+    } else {
+      const updatedAgo = v.updated_at ? timeAgoShort(v.updated_at) : '?';
+      ownerHtml = `<div style="font-size:10px;color:#888;margin-top:4px">👁 ${v.player_name} · Tropas atualizadas há ${updatedAgo}</div>`;
+    }
 
     td.innerHTML = badgeHtml + troopHtml + ownerHtml;
     troopRow.appendChild(td);
     tbody.appendChild(troopRow);
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
   function timeAgoShort(iso) {
@@ -1444,7 +1492,172 @@ function showEosNotification(text, icon) {
   }, 2000);
 }
 
-function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); }
+// ── Sincronização de relatórios inimigos ───────────────────────────────────
+
+function parseReport() {
+  // Coords do alvo (defensor) — header do relatório tem link para aldeia
+  // Ex: "Aldeia Inimiga (568|475) K45"
+  const headers = document.querySelectorAll('#content_value a.village_anchor, #content_value a[href*="screen=info_village"]');
+  // Em TW PT, o header do relatório tem a estrutura: Atacante → Defensor
+  // O defensor é a 2ª ocorrência (ou última)
+  let defCoords = null, defVillageName = null, defPlayerName = null, defTribeName = null;
+
+  // Procura as linhas "Defensor" no relatório
+  // A tabela principal tem th "Atacante" e th "Defensor"
+  const contentTable = document.querySelector('#attack_info_def') || document.querySelector('#attack_info_defender');
+  if (contentTable) {
+    // Player defensor
+    const playerLink = contentTable.querySelector('a[href*="screen=info_player"]');
+    if (playerLink) defPlayerName = playerLink.textContent.trim();
+    // Tribo defensor
+    const tribeLink = contentTable.querySelector('a[href*="screen=info_ally"]');
+    if (tribeLink) defTribeName = tribeLink.textContent.trim();
+    // Aldeia defensora (link com coords)
+    const villageLinks = contentTable.querySelectorAll('a[href*="screen=info_village"]');
+    for (const a of villageLinks) {
+      const m = a.textContent.match(/\((\d+\|\d+)\)/);
+      if (m) {
+        defCoords = m[1];
+        defVillageName = a.textContent.replace(/\s*\(\d+\|\d+\)\s*/, '').trim();
+        break;
+      }
+    }
+  }
+
+  if (!defCoords) return null;
+
+  // Tropas do defensor (se visíveis)
+  // Tabelas #attack_info_def_units e similar mostram contagens
+  const troops = {};
+  const defUnitsTable = document.querySelector('#attack_info_def_units');
+  if (defUnitsTable) {
+    const headers = defUnitsTable.querySelectorAll('img[src*="unit_"]');
+    const rows = defUnitsTable.querySelectorAll('tr');
+    if (rows.length >= 2) {
+      // Primeira linha: units header. Segunda linha: quantidades que defenderam (linha "Quantidade" ou "A caminho")
+      // Procura a linha que contém as tropas que estavam na aldeia (Total defensivo)
+      // No TW PT a linha é "Quantidade:" ou similar
+      const unitCells = rows[0].querySelectorAll('img[src*="unit_"]');
+      const unitNames = Array.from(unitCells).map(img => {
+        const src = img.getAttribute('src') || '';
+        const m = src.match(/unit_(\w+)\.png/);
+        return m ? m[1] : null;
+      });
+
+      // Procura a linha "Total" ou "Losses" para saber quantas tropas tinha
+      for (const row of rows) {
+        const firstCell = row.querySelector('td');
+        if (!firstCell) continue;
+        const label = (firstCell.textContent || '').toLowerCase().trim();
+        if (label.includes('quantidade') || label.includes('total')) {
+          const cells = row.querySelectorAll('td');
+          // Salta primeira cell (label)
+          unitNames.forEach((unit, i) => {
+            if (!unit) return;
+            const cell = cells[i + 1];
+            if (!cell) return;
+            const n = parseInt((cell.textContent || '').replace(/\D/g, '')) || 0;
+            if (n > 0) troops[unit] = n;
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  // Data do relatório
+  let reportDate = null;
+  const dateTd = document.querySelector('#content_value th + td') || document.querySelector('.report_ReportAttack table td');
+  // Fallback: procura qualquer texto tipo "às HH:MM · dd/mm/aaaa"
+  const allText = document.querySelector('#content_value')?.textContent || '';
+  const dateMatch = allText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[àas]{0,3}\s*(\d{1,2}):(\d{2})/i);
+  if (dateMatch) {
+    const [, day, month, year, hh, mm] = dateMatch;
+    reportDate = new Date(Date.UTC(+year, +month - 1, +day, +hh, +mm)).toISOString();
+  } else {
+    reportDate = new Date().toISOString(); // fallback
+  }
+
+  // Nível da muralha (se visível)
+  let wallLevel = null;
+  const buildings = {};
+  const buildingsTable = document.querySelector('#attack_spy_building_data') || document.querySelector('#attack_info_att_buildings');
+  if (buildingsTable) {
+    const data = buildingsTable.getAttribute('data-buildings') || buildingsTable.textContent;
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        for (const b of parsed) {
+          if (b.name && b.level != null) buildings[b.name] = b.level;
+        }
+        if (buildings.wall != null) wallLevel = buildings.wall;
+      }
+    } catch (_) {}
+  }
+
+  return {
+    village_coords:    defCoords,
+    village_name:      defVillageName,
+    owner_player_name: defPlayerName,
+    owner_tribe_name:  defTribeName,
+    troops:            Object.keys(troops).length > 0 ? troops : null,
+    buildings:         Object.keys(buildings).length > 0 ? buildings : null,
+    wall_level:        wallLevel,
+    report_date:       reportDate,
+  };
+}
+
+function injectSyncReportButton() {
+  if (!isReportPage()) return;
+  if (document.getElementById('eos-sync-report-btn')) return;
+
+  // Inserir no topo do conteúdo do relatório
+  const contentValue = document.getElementById('content_value');
+  if (!contentValue) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'eos-sync-report-btn';
+  btn.textContent = '👁 Sincronizar com EOS';
+  btn.style.cssText = 'margin:8px 0;padding:6px 14px;'
+    + 'background:linear-gradient(180deg,#e87830,#c04818);color:#fff;'
+    + 'border:1px solid #f0a040;border-radius:5px;'
+    + 'font-size:12px;font-weight:700;cursor:pointer;'
+    + 'box-shadow:0 2px 8px rgba(232,80,32,.4)';
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = '⏳ A sincronizar...';
+    try {
+      const data = parseReport();
+      if (!data) throw new Error('Não foi possível ler o relatório');
+
+      const { token } = await getWorldStorage('token');
+      if (!token) throw new Error('Sem autenticação EOS');
+
+      const res = await fetch(`${EOS_SERVER}/api/enemy-reports`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-EOS-Version': chrome.runtime.getManifest().version,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`Erro: ${res.status}`);
+
+      btn.textContent = '✔ Sincronizado';
+      btn.style.background = 'linear-gradient(180deg,#4caf50,#2d8030)';
+    } catch (e) {
+      btn.textContent = `❌ ${e.message}`;
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = '👁 Sincronizar com EOS'; }, 3000);
+    }
+  });
+
+  contentValue.insertBefore(btn, contentValue.firstChild);
+}
+
+function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); }
 if (document.readyState === 'loading') {
   // DOMContentLoaded é suficiente — não esperar por load (imagens/css)
   document.addEventListener('DOMContentLoaded', boot, { once: true });
