@@ -1643,17 +1643,29 @@ function readUnitsTable(table) {
   if (!quantRow) return null;
 
   function readRowValues(row, unitRowRef) {
-    const unitCells = Array.from(unitRowRef.querySelectorAll('td, th'));
-    const valCells  = Array.from(row.querySelectorAll('td, th'));
-    const offset = valCells.length - unitCells.length;
+    // Estratégia: usa a posição absoluta de cada célula no row para alinhar com a row de valores
+    // Isto evita problemas com rows que têm células de label extras
+    const unitCells = Array.from(unitRowRef.children); // só os direct td/th
+    const valCells  = Array.from(row.children);
+
+    // Conta quantas cells de label existem em cada row (células sem img mas antes da primeira img)
+    // Encontra o índice da primeira célula com img unit_
+    let firstUnitIdx = unitCells.findIndex(c => c.querySelector('img[src*="unit_"]'));
+    if (firstUnitIdx < 0) return {};
+
+    // Na value row, conta cells de texto/label antes dos números
+    // Label count = diff entre número total de cells e número de cells com img na unitRow (após offset)
+    const unitImgCells = unitCells.slice(firstUnitIdx).filter(c => c.querySelector('img[src*="unit_"]'));
+    // valCells deve ter N cells numéricas (N = unitImgCells.length) mais label cells
+    const labelCountInValRow = Math.max(0, valCells.length - unitImgCells.length);
+
     const result = {};
-    unitCells.forEach((unitCell, i) => {
+    unitImgCells.forEach((unitCell, i) => {
       const img = unitCell.querySelector('img[src*="unit_"]');
-      if (!img) return;
       const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
       const unit = m ? m[1] : null;
       if (!unit) return;
-      const valCell = valCells[i + Math.max(0, offset)];
+      const valCell = valCells[labelCountInValRow + i];
       if (!valCell) return;
       const n = parseInt((valCell.textContent || '').replace(/\D/g, '')) || 0;
       result[unit] = n;
