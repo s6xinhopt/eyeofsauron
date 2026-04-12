@@ -1136,6 +1136,20 @@ function placeShields() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
+  // DEBUG: logs único para diagnóstico
+  if (!window._eosDebugLogged) {
+    window._eosDebugLogged = true;
+    const own = [];
+    for (const [coords, v] of mapVillageData) {
+      if (v.player_name === currentPlayerName) {
+        own.push({ coords, player: v.player_name, total: !!v.troops_total, own: !!v.troops_own });
+      }
+    }
+    console.log('[EOS] currentPlayerName:', currentPlayerName);
+    console.log('[EOS] total villages in mapVillageData:', mapVillageData.size);
+    console.log('[EOS] own villages:', own.length, own.slice(0, 5));
+  }
+
   // Classifica aldeias por bunk type (usa troops_total ou troops_own como fallback)
   const bunkeredMap = new Map();
   for (const [coords, v] of mapVillageData) {
