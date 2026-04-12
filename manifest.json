@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Eye of Sauron",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "Tribe Management para Tribal Wars PT.",
   "background": {
     "service_worker": "background.js"

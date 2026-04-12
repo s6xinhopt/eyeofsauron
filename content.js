@@ -1377,6 +1377,11 @@ function showEosNotification(text, icon) {
     n.style.borderColor = '#4caf50';
     n.style.borderLeftColor = '#4caf50';
     n.style.color = '#6fcf6f';
+  } else if (icon === 'error') {
+    n.style.background = 'linear-gradient(135deg,#2a1410,#1a0c08)';
+    n.style.borderColor = '#5a2020';
+    n.style.borderLeftColor = '#e05050';
+    n.style.color = '#e07070';
   } else {
     n.style.background = 'linear-gradient(135deg,#2a1810,#1a1208)';
     n.style.borderColor = '#e8783040';
