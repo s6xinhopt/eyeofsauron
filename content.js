@@ -1126,13 +1126,19 @@ async function fetchEnemyReports(token) {
     const res = await fetch(`${EOS_SERVER}/api/enemy-reports`, {
       headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.warn('[EOS] fetchEnemyReports falhou:', res.status, await res.text().catch(() => ''));
+      return;
+    }
     const { reports } = await res.json();
     enemyReportsData = new Map();
     for (const r of (reports || [])) {
       if (r.village_coords) enemyReportsData.set(r.village_coords, r);
     }
-  } catch (_) {}
+    console.log('[EOS] enemy reports carregados:', enemyReportsData.size);
+  } catch (e) {
+    console.warn('[EOS] fetchEnemyReports erro:', e);
+  }
 }
 
 function getMapCenter() {
