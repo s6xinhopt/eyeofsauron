@@ -174,9 +174,18 @@ if (-not $UpdateOnly) {
         $updaterPath = Join-Path $InstallDir "Update-EyeOfSauron.ps1"
         Invoke-WebRequest -Uri $ScriptUrl -OutFile $updaterPath -UseBasicParsing
 
+        # Cria wrapper VBScript que executa o PowerShell completamente invisivel
+        # (powershell -WindowStyle Hidden ainda mostra um flash da janela)
+        $vbsPath = Join-Path $InstallDir "RunUpdater.vbs"
+        $vbsContent = @"
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File ""$updaterPath"" -UpdateOnly", 0, False
+"@
+        Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII
+
         $action = New-ScheduledTaskAction `
-            -Execute "powershell.exe" `
-            -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$updaterPath`" -UpdateOnly"
+            -Execute "wscript.exe" `
+            -Argument "`"$vbsPath`""
 
         $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
             -RepetitionInterval (New-TimeSpan -Minutes 30) `
