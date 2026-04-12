@@ -1249,8 +1249,11 @@ function setupPopupObserver() {
     if (!coordMatch) return;
     const coordKey = coordMatch[1];
 
-    const v = mapVillageData.get(coordKey);
-    const enemyReport = enemyReportsData?.get(coordKey);
+    const v = mapVillageData ? mapVillageData.get(coordKey) : null;
+    const enemyReport = enemyReportsData ? enemyReportsData.get(coordKey) : null;
+
+    console.log('[EOS tooltip]', coordKey, 'tribe:', !!v, 'enemy:', !!enemyReport,
+      enemyReportsData ? 'totalEnemy=' + enemyReportsData.size : 'no enemy data');
 
     // Sem dados da tribo nem relatório inimigo → nada a mostrar
     if (!v && !enemyReport) return;
