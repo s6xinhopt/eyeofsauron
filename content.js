@@ -335,14 +335,25 @@ function findGroupsContainer() {
   return null;
 }
 
-// Verifica se o grupo já está selecionado
+// Verifica se o grupo já está selecionado (URL + DOM)
 function isGroupAlreadySelected(groupId) {
   const urlGroup = new URLSearchParams(window.location.search).get('group');
+  // URL explícita ganha prioridade
+  if (urlGroup) return urlGroup === groupId;
+  // Sem group= na URL → verifica o DOM (o TW pode ter grupo selecionado por sessão)
+  // Se groupId é '0' e há elemento com classe ativa doutro grupo, NÃO está selecionado
   if (groupId === '0') {
-    // Na overview_villages, sem group= na URL = "Todos" selecionado
-    return !urlGroup || urlGroup === '0';
+    // Procura o link "Todos" e vê se está ativo (class selected/active)
+    const scope = findGroupsContainer() || document;
+    const todosLink = scope.querySelector('a[href*="group=0"], a[href*="mode=units"]:not([href*="group="])');
+    if (todosLink && /selected|active/i.test(todosLink.className)) return true;
+    // Se há outro grupo com class active/selected, não está em "Todos"
+    const anyActive = scope.querySelector('a.selected, a.active, a[class*="selected"], a[class*="active"]');
+    if (anyActive && !/group=0/.test(anyActive.getAttribute('href') || '')) return false;
+    // Sem pistas claras — assume não selecionado para forçar click em Todos
+    return false;
   }
-  return urlGroup === groupId;
+  return false;
 }
 
 function findGroupElement(groupId) {
