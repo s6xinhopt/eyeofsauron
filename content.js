@@ -1967,7 +1967,53 @@ function injectSyncReportButton() {
   contentValue.insertBefore(btn, contentValue.firstChild);
 }
 
-function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); }
+// ── Auto-preencher apoio na place.php ─────────────────────────────────────
+async function autoFillSupportIfPending() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('screen') !== 'place') return;
+
+  const data = await getWorldStorage('pendingSupportCoords', 'pendingSupportTroops', 'pendingSupportSigilia');
+  if (!data.pendingSupportCoords || !data.pendingSupportTroops) return;
+
+  // Verifica se os coords na URL correspondem (evita preencher noutra página place)
+  const urlX = params.get('x'), urlY = params.get('y');
+  const [wantX, wantY] = data.pendingSupportCoords.split('|');
+  if (urlX !== wantX || urlY !== wantY) return;
+
+  const troops = data.pendingSupportTroops;
+
+  // Limpa o flag para não preencher de novo se o user navegar
+  await setWorldStorage({ pendingSupportCoords: null, pendingSupportTroops: null, pendingSupportSigilia: null });
+
+  // Preenche cada unidade no formulário — aguarda DOM estar pronto
+  function fill() {
+    let filled = 0;
+    for (const [unit, count] of Object.entries(troops)) {
+      const input = document.querySelector(`input[name="${unit}"]`);
+      if (input) {
+        input.value = count;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        filled++;
+      }
+    }
+    return filled;
+  }
+
+  // Retry até o form estar carregado
+  let tries = 0;
+  const interval = setInterval(() => {
+    const filled = fill();
+    if (filled > 0 || tries++ > 20) {
+      clearInterval(interval);
+      if (filled > 0) {
+        showEosNotification(`✔ ${filled} unidades preenchidas — clica em Apoiar`, 'ok');
+      }
+    }
+  }, 200);
+}
+
+function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); autoFillSupportIfPending(); }
 if (document.readyState === 'loading') {
   // DOMContentLoaded é suficiente — não esperar por load (imagens/css)
   document.addEventListener('DOMContentLoaded', boot, { once: true });
@@ -2015,7 +2061,25 @@ window.addEventListener('message', (event) => {
       return;
     }
 
-
+    if (event.data.type === 'EOS_SEND_SUPPORT') {
+      // Abre a page de place.php com coords alvo, guarda tropas a preencher
+      const coords = event.data.target_coords;
+      const troops = event.data.troops || {};
+      const sigilia = event.data.sigilia_minutes || 0;
+      if (!coords) return;
+      // Guarda estado para o content.js na place.php pré-preencher
+      setWorldStorage({
+        pendingSupportCoords: coords,
+        pendingSupportTroops: troops,
+        pendingSupportSigilia: sigilia,
+      });
+      const [tx, ty] = coords.split('|');
+      const villageMatch = window.location.href.match(/village=(\d+)/);
+      const vid = villageMatch ? villageMatch[1] : '';
+      const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=place&x=${tx}&y=${ty}`;
+      chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: true });
+      return;
+    }
   }
 
   // Mensagens do page_reader (mesmo window)
