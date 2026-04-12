@@ -1212,11 +1212,6 @@ function placeShields() {
   let villageIds;
   try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
 
-  const OFF_IMG = {
-    full:  chrome.runtime.getURL('png/attack_large.png'),
-    semi:  chrome.runtime.getURL('png/attack_medium.png'),
-    small: chrome.runtime.getURL('png/attack_small.png'),
-  };
   const DEF_BG = { light:'#4caf50', medium:'#ff9800', heavy:'#f44336' };
   const SWORD_IMG = chrome.runtime.getURL('png/unit_sword.png');
   const VILLAGE_W = 53;
@@ -1257,36 +1252,23 @@ function placeShields() {
       }
     }
 
-    // ── Ícones inimigos (ofensivo + defensivo) ──
+    // ── Ícone defensivo inimigo (bunk) ──
     // Skip se esta aldeia já está na tribo (é nossa) — prioridade ao shield
     if (!alreadyEnemy && hasEnemy && !(hasTribe && mapVillageData.get(coordKey))) {
       const report = enemyReportsData.get(coordKey);
       if (report) {
-        const { offSize, defSize } = classifyEnemyTroops(report.troops_outside);
-        if (offSize || defSize) {
-          const both = offSize && defSize;
+        const { defSize } = classifyEnemyTroops(report.troops_outside);
+        if (defSize) {
           const centerX = left + VILLAGE_W / 2;
-          if (offSize) {
-            const offIcon = document.createElement('img');
-            offIcon.src = OFF_IMG[offSize];
-            offIcon.dataset.eosEnemy = coordKey;
-            offIcon.title = `Ofensiva ${offSize} (${coordKey})`;
-            const iconX = both ? (centerX - ICON_SIZE - 1) : (centerX - ICON_SIZE / 2);
-            offIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${iconX}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))`;
-            parent.insertBefore(offIcon, domVillage);
-          }
-          if (defSize) {
-            const defIcon = document.createElement('div');
-            defIcon.dataset.eosEnemy = coordKey;
-            defIcon.title = `Bunk ${defSize} (${coordKey})`;
-            const iconX = both ? (centerX + 1) : (centerX - ICON_SIZE / 2);
-            defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${iconX}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${DEF_BG[defSize]};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${DEF_BG[defSize]}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center`;
-            const sword = document.createElement('img');
-            sword.src = SWORD_IMG;
-            sword.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
-            defIcon.appendChild(sword);
-            parent.insertBefore(defIcon, domVillage);
-          }
+          const defIcon = document.createElement('div');
+          defIcon.dataset.eosEnemy = coordKey;
+          defIcon.title = `Bunk ${defSize} (${coordKey})`;
+          defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${centerX - ICON_SIZE / 2}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${DEF_BG[defSize]};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${DEF_BG[defSize]}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center`;
+          const sword = document.createElement('img');
+          sword.src = SWORD_IMG;
+          sword.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
+          defIcon.appendChild(sword);
+          parent.insertBefore(defIcon, domVillage);
         }
       }
     }
