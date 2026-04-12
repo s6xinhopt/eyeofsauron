@@ -58,7 +58,7 @@ async function handlePlayerSeen({ playerName, tribeName, tribeTag, allyId, hasTr
   try {
     const res = await fetch(`${EOS_SERVER}/api/auth`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-EOS-Version': chrome.runtime.getManifest().version },
       body: JSON.stringify({ playerName, tribeName, tribeTag: tribeTag || '', allyId, hasTribe, world })
     });
 
@@ -117,7 +117,7 @@ async function handlePlayerSeen({ playerName, tribeName, tribeTag, allyId, hasTr
 async function syncSchedules(world, token, checkMissed = false) {
   try {
     const res = await fetch(`${EOS_SERVER}/api/schedules`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
     });
     if (!res.ok) return;
     const { schedules, last_report } = await res.json();
@@ -259,7 +259,7 @@ async function checkPendingBadge(world) {
   }
   try {
     const res = await fetch(`${EOS_SERVER}/api/pending`, {
-      headers: { Authorization: `Bearer ${wd.token}` }
+      headers: { Authorization: `Bearer ${wd.token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
     });
     if (!res.ok) return;
     const { pending } = await res.json();
@@ -285,7 +285,7 @@ async function checkTroopRequest(world) {
   if (!wd.token) return;
   try {
     const res = await fetch(`${EOS_SERVER}/api/check`, {
-      headers: { Authorization: `Bearer ${wd.token}` }
+      headers: { Authorization: `Bearer ${wd.token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
     });
     if (!res.ok) return;
     const { troop_request, troop_request_group_id, troop_request_group_name, auto_accept_requests } = await res.json();
@@ -459,7 +459,7 @@ async function checkForUpdate() {
   } catch (_) {}
 }
 
-chrome.alarms.create('check-update', { periodInMinutes: 360 });
+chrome.alarms.create('check-update', { periodInMinutes: 10 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'check-update') checkForUpdate();
 });
