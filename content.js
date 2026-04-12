@@ -1967,50 +1967,129 @@ function injectSyncReportButton() {
   contentValue.insertBefore(btn, contentValue.firstChild);
 }
 
-// ── Auto-preencher apoio na place.php ─────────────────────────────────────
+// ── Auto-processar apoio em place.php?mode=call ────────────────────────────
 async function autoFillSupportIfPending() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('screen') !== 'place') return;
+  if (params.get('screen') !== 'place' || params.get('mode') !== 'call') return;
 
-  const data = await getWorldStorage('pendingSupportCoords', 'pendingSupportTroops', 'pendingSupportSigilia');
-  if (!data.pendingSupportCoords || !data.pendingSupportTroops) return;
+  const data = await getWorldStorage('pendingSupportTargetVid', 'pendingSupportTroops', 'pendingSupportGroupId', 'pendingSupportGroupName');
+  if (!data.pendingSupportTargetVid || !data.pendingSupportTroops) return;
 
-  // Verifica se os coords na URL correspondem (evita preencher noutra página place)
-  const urlX = params.get('x'), urlY = params.get('y');
-  const [wantX, wantY] = data.pendingSupportCoords.split('|');
-  if (urlX !== wantX || urlY !== wantY) return;
+  const urlTarget = params.get('target');
+  if (urlTarget !== String(data.pendingSupportTargetVid)) return;
 
   const troops = data.pendingSupportTroops;
+  const groupId = data.pendingSupportGroupId || '0';
+  const groupName = data.pendingSupportGroupName || 'Todos';
 
-  // Limpa o flag para não preencher de novo se o user navegar
-  await setWorldStorage({ pendingSupportCoords: null, pendingSupportTroops: null, pendingSupportSigilia: null });
-
-  // Preenche cada unidade no formulário — aguarda DOM estar pronto
-  function fill() {
-    let filled = 0;
-    for (const [unit, count] of Object.entries(troops)) {
-      const input = document.querySelector(`input[name="${unit}"]`);
-      if (input) {
-        input.value = count;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        filled++;
-      }
+  // Passo 1: seleciona grupo (se não "Todos" e se ainda não clicou)
+  const groupClicked = sessionStorage.getItem('eos_support_group_clicked') === groupId;
+  if (!groupClicked && !isGroupAlreadySelected(groupId)) {
+    const el = await waitForGroupElement(groupId);
+    if (el) {
+      sessionStorage.setItem('eos_support_group_clicked', groupId);
+      el.click();
+      return;  // A página recarrega
     }
-    return filled;
   }
+  sessionStorage.removeItem('eos_support_group_clicked');
 
-  // Retry até o form estar carregado
-  let tries = 0;
-  const interval = setInterval(() => {
-    const filled = fill();
-    if (filled > 0 || tries++ > 20) {
-      clearInterval(interval);
-      if (filled > 0) {
-        showEosNotification(`✔ ${filled} unidades preenchidas — clica em Apoiar`, 'ok');
-      }
+  // Passo 2: clica "Todos" na paginação
+  const pagClicked = sessionStorage.getItem('eos_support_pagination_clicked') === '1';
+  if (!pagClicked) {
+    const pagTodos = await new Promise(resolve => {
+      const find = () => Array.from(document.querySelectorAll('a.paged-nav-item'))
+        .find(a => /todos/i.test(a.textContent.trim())) || null;
+      const el = find();
+      if (el) return resolve(el);
+      let attempts = 0;
+      const check = setInterval(() => {
+        const el = find();
+        if (el) { clearInterval(check); resolve(el); }
+        else if (++attempts > 8) { clearInterval(check); resolve(null); }
+      }, 300);
+    });
+    if (pagTodos) {
+      sessionStorage.setItem('eos_support_pagination_clicked', '1');
+      pagTodos.click();
+      return;
     }
-  }, 200);
+  }
+  sessionStorage.removeItem('eos_support_pagination_clicked');
+
+  // Passo 3: injeta botão "Enviar apoio" com as tropas requisitadas
+  // Limpa flag para não re-processar
+  await setWorldStorage({
+    pendingSupportTargetVid: null,
+    pendingSupportTroops:    null,
+    pendingSupportGroupId:   null,
+    pendingSupportGroupName: null,
+  });
+
+  injectSupportSendButton(troops, groupId, groupName);
+}
+
+function injectSupportSendButton(troops, groupId, groupName) {
+  if (document.getElementById('eos-send-support-btn')) return;
+
+  const container = document.createElement('div');
+  container.id = 'eos-send-support-container';
+  container.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;'
+    + 'background:linear-gradient(135deg,#2a1810,#1a1208);'
+    + 'border:2px solid #e87830;border-radius:10px;padding:14px 18px;'
+    + 'box-shadow:0 4px 24px rgba(232,80,32,.4);'
+    + 'font-family:Segoe UI,sans-serif;color:#f0e0c8;max-width:320px';
+
+  const title = document.createElement('div');
+  title.textContent = `⚔ Apoio requisitado (grupo: ${groupName})`;
+  title.style.cssText = 'font-size:12px;font-weight:700;color:#f0b878;margin-bottom:8px';
+  container.appendChild(title);
+
+  const troopsDiv = document.createElement('div');
+  troopsDiv.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px';
+  for (const [unit, count] of Object.entries(troops)) {
+    if (!count) continue;
+    const item = document.createElement('div');
+    item.style.cssText = 'display:inline-flex;align-items:center;gap:3px;font-size:12px';
+    item.innerHTML = `<img src="/graphic/unit/unit_${unit}.png" style="width:14px;height:14px"> <span style="font-weight:600">${count}</span>`;
+    troopsDiv.appendChild(item);
+  }
+  container.appendChild(troopsDiv);
+
+  const btn = document.createElement('button');
+  btn.id = 'eos-send-support-btn';
+  btn.textContent = 'Enviar apoio';
+  btn.style.cssText = 'width:100%;padding:10px;background:linear-gradient(180deg,#4caf50,#2d8030);'
+    + 'color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;'
+    + 'box-shadow:0 2px 8px rgba(76,175,80,.4)';
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = '⏳ A enviar...';
+    try {
+      // Submete o formulário do TW. O botão nativo é tipicamente "Confirmar apoio"
+      // mas o form tem um submit que o TW intercepta.
+      const form = document.querySelector('form#command-data-form, form[action*="place"]');
+      if (!form) throw new Error('Formulário não encontrado');
+      // Encontra e clica o botão de submit do TW
+      const submitBtn = form.querySelector('input[type="submit"], button[type="submit"]')
+        || form.querySelector('.btn-confirm-yes');
+      if (submitBtn) {
+        submitBtn.click();
+      } else {
+        form.submit();
+      }
+      btn.textContent = '✔ Enviado — aguarda confirmação do TW';
+      btn.style.background = 'linear-gradient(180deg,#4caf50,#2d8030)';
+    } catch (e) {
+      btn.textContent = '❌ ' + e.message;
+      btn.style.background = '#5a2020';
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Enviar apoio'; }, 3000);
+    }
+  });
+
+  container.appendChild(btn);
+  document.body.appendChild(container);
 }
 
 function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); autoFillSupportIfPending(); }
@@ -2062,22 +2141,47 @@ window.addEventListener('message', (event) => {
     }
 
     if (event.data.type === 'EOS_SEND_SUPPORT') {
-      // Abre a page de place.php com coords alvo, guarda tropas a preencher
-      const coords = event.data.target_coords;
-      const troops = event.data.troops || {};
-      const sigilia = event.data.sigilia_minutes || 0;
-      if (!coords) return;
-      // Guarda estado para o content.js na place.php pré-preencher
-      setWorldStorage({
-        pendingSupportCoords: coords,
-        pendingSupportTroops: troops,
-        pendingSupportSigilia: sigilia,
-      });
-      const [tx, ty] = coords.split('|');
-      const villageMatch = window.location.href.match(/village=(\d+)/);
-      const vid = villageMatch ? villageMatch[1] : '';
-      const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?${vid ? `village=${vid}&` : ''}screen=place&x=${tx}&y=${ty}`;
-      chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: true });
+      // Abre mass support (place.php?mode=call&target=VID) — lookup do village_id via village.txt
+      (async () => {
+        const coords = event.data.target_coords;
+        const troops = event.data.troops || {};
+        const groupId = event.data.group_id || '0';
+        const groupName = event.data.group_name || 'Todos';
+        if (!coords) return;
+        const [tx, ty] = coords.split('|');
+
+        // Lookup village_id pelas coords
+        let targetVid = null;
+        try {
+          const txt = await fetch(`https://${CURRENT_WORLD}.tribalwars.com.pt/map/village.txt`, { cache: 'no-store' }).then(r => r.text());
+          for (const line of txt.split('\n')) {
+            const parts = line.split(',');
+            // Formato: id,name,x,y,player_id,points,rank
+            if (parts.length >= 4 && parts[2] === tx && parts[3] === ty) {
+              targetVid = parts[0];
+              break;
+            }
+          }
+        } catch (e) { console.warn('[EOS] Erro ao fazer lookup village.txt:', e); }
+
+        if (!targetVid) {
+          alert('Não foi possível encontrar a aldeia alvo.');
+          return;
+        }
+
+        // Guarda estado para o content.js processar na place.php
+        await setWorldStorage({
+          pendingSupportTargetVid: targetVid,
+          pendingSupportTroops:    troops,
+          pendingSupportGroupId:   groupId,
+          pendingSupportGroupName: groupName,
+        });
+
+        const villageMatch = window.location.href.match(/village=(\d+)/);
+        const myVid = villageMatch ? villageMatch[1] : '';
+        const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?${myVid ? `village=${myVid}&` : ''}screen=place&mode=call&target=${targetVid}`;
+        chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: true });
+      })();
       return;
     }
   }
