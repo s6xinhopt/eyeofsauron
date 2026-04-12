@@ -1125,11 +1125,10 @@ function placeShields() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
-  // Classifica aldeias por bunk type (ignora as próprias aldeias)
+  // Classifica aldeias por bunk type
   const bunkeredMap = new Map();
   for (const [coords, v] of mapVillageData) {
     if (!v.troops_total) continue;
-    if (v.player_name && currentPlayerName && v.player_name === currentPlayerName) continue;
     const bt = classifyVillageForMap(v.troops_total);
     if (bt) bunkeredMap.set(coords, bt);
   }
@@ -1233,21 +1232,21 @@ function setupPopupObserver() {
       badgeHtml = `<div style="display:inline-block;background:${bt.color};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-bottom:3px">${bt.name}</div><br>`;
     }
 
-    // Tabela de tropas compacta com PNGs
-    let troopHtml = '<table style="border-collapse:collapse;width:100%;margin-top:2px"><tr>';
+    // Tabela de tropas com PNGs maiores
+    let troopHtml = '<table style="border-collapse:collapse;width:100%;margin-top:4px"><tr>';
     for (const u of units) {
-      troopHtml += `<td style="text-align:center;padding:1px"><img src="/graphic/unit/unit_${u}.png" style="width:14px;height:14px;vertical-align:middle" title="${u}"></td>`;
+      troopHtml += `<td style="text-align:center;padding:2px"><img src="/graphic/unit/unit_${u}.png" style="width:20px;height:20px;vertical-align:middle" title="${u}"></td>`;
     }
     troopHtml += '</tr><tr>';
     for (const u of units) {
       const val = t[u] || 0;
-      troopHtml += `<td style="text-align:center;font-size:10px;font-weight:600;color:${val > 0 ? '#000' : '#bbb'};padding:1px">${val > 0 ? fmtK(val) : '-'}</td>`;
+      troopHtml += `<td style="text-align:center;font-size:13px;font-weight:700;color:${val > 0 ? '#000' : '#bbb'};padding:2px">${val > 0 ? fmtK(val) : '-'}</td>`;
     }
     troopHtml += '</tr></table>';
 
     // Info do jogador e atualização
     const updatedAgo = v.updated_at ? timeAgoShort(v.updated_at) : '?';
-    const ownerHtml = `<div style="font-size:9px;color:#888;margin-top:2px">👁 ${v.player_name} · atualizado ${updatedAgo}</div>`;
+    const ownerHtml = `<div style="font-size:10px;color:#888;margin-top:4px">👁 ${v.player_name} · Tropas atualizadas há ${updatedAgo}</div>`;
 
     td.innerHTML = badgeHtml + troopHtml + ownerHtml;
     troopRow.appendChild(td);
