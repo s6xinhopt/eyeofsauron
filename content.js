@@ -1290,17 +1290,29 @@ function setupPopupObserver() {
     }
     if (badgeHtml) badgeHtml += '<br>';
 
-    // Tabela de tropas com PNGs maiores
-    let troopHtml = '<table style="border-collapse:collapse;width:100%;margin-top:4px"><tr>';
-    for (const u of units) {
-      troopHtml += `<td style="text-align:center;padding:2px"><img src="/graphic/unit/unit_${u}.png" style="width:20px;height:20px;vertical-align:middle" title="${u}"></td>`;
+    function renderTroopsTable(troopsObj, labelText) {
+      let html = '';
+      if (labelText) html += `<div style="font-size:9px;color:#888;text-transform:uppercase;margin-top:4px;font-weight:700">${labelText}</div>`;
+      html += '<table style="border-collapse:collapse;width:100%;margin-top:2px"><tr>';
+      for (const u of units) {
+        html += `<td style="text-align:center;padding:2px"><img src="/graphic/unit/unit_${u}.png" style="width:20px;height:20px;vertical-align:middle" title="${u}"></td>`;
+      }
+      html += '</tr><tr>';
+      for (const u of units) {
+        const val = troopsObj[u] || 0;
+        html += `<td style="text-align:center;font-size:13px;font-weight:700;color:${val > 0 ? '#000' : '#bbb'};padding:2px">${val > 0 ? fmtK(val) : '-'}</td>`;
+      }
+      html += '</tr></table>';
+      return html;
     }
-    troopHtml += '</tr><tr>';
-    for (const u of units) {
-      const val = t[u] || 0;
-      troopHtml += `<td style="text-align:center;font-size:13px;font-weight:700;color:${val > 0 ? '#000' : '#bbb'};padding:2px">${val > 0 ? fmtK(val) : '-'}</td>`;
+
+    // Tabela de tropas na aldeia
+    let troopHtml = renderTroopsTable(t, isEnemy && enemyReport.troops_outside ? 'Na aldeia' : null);
+
+    // Se for inimigo e tiver tropas fora, mostrar tabela adicional
+    if (isEnemy && enemyReport.troops_outside) {
+      troopHtml += renderTroopsTable(enemyReport.troops_outside, 'Fora da aldeia');
     }
-    troopHtml += '</tr></table>';
 
     // Info do jogador e atualização
     let ownerHtml;
@@ -1503,26 +1515,101 @@ function showEosNotification(text, icon) {
 
 // ── Sincronização de relatórios inimigos ───────────────────────────────────
 
-function parseReport() {
-  // Coords do alvo (defensor) — header do relatório tem link para aldeia
-  // Ex: "Aldeia Inimiga (568|475) K45"
-  const headers = document.querySelectorAll('#content_value a.village_anchor, #content_value a[href*="screen=info_village"]');
-  // Em TW PT, o header do relatório tem a estrutura: Atacante → Defensor
-  // O defensor é a 2ª ocorrência (ou última)
-  let defCoords = null, defVillageName = null, defPlayerName = null, defTribeName = null;
+// Lê uma tabela de tropas com a estrutura típica do TW:
+// Linha 1: imgs das unidades (unit_spear.png etc)
+// Linha 2: contagens (primeira célula pode ser label "Quantidade:")
+// Linha 3: perdas (opcional, primeira célula "Baixas:")
+// Retorna objeto { spear: N, sword: N, ... } da linha de quantidades
+function readUnitsTable(table) {
+  if (!table) return null;
+  const rows = Array.from(table.querySelectorAll('tr'));
+  if (rows.length < 2) return null;
 
-  // Procura as linhas "Defensor" no relatório
-  // A tabela principal tem th "Atacante" e th "Defensor"
-  const contentTable = document.querySelector('#attack_info_def') || document.querySelector('#attack_info_defender');
-  if (contentTable) {
-    // Player defensor
-    const playerLink = contentTable.querySelector('a[href*="screen=info_player"]');
+  // Linha de unidades (contém imgs unit_)
+  let unitRow = null;
+  for (const row of rows) {
+    if (row.querySelector('img[src*="unit_"]')) { unitRow = row; break; }
+  }
+  if (!unitRow) return null;
+
+  const unitImgs = Array.from(unitRow.querySelectorAll('img[src*="unit_"]'));
+  const unitNames = unitImgs.map(img => {
+    const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
+    return m ? m[1] : null;
+  });
+
+  // Procura a linha de quantidades (NÃO é baixas/losses)
+  // Estratégia: primeira linha com números que NÃO contém "baixa"/"losses" no texto
+  // Se existir linha com label "Quantidade:" usa essa
+  let quantRow = null;
+  for (const row of rows) {
+    const firstCell = row.querySelector('td');
+    if (!firstCell) continue;
+    const label = (firstCell.textContent || '').toLowerCase().trim();
+    if (label.includes('quantidade')) { quantRow = row; break; }
+  }
+  // Fallback: primeira linha após unitRow com números (não é a row das imgs)
+  if (!quantRow) {
+    const unitIdx = rows.indexOf(unitRow);
+    for (let i = unitIdx + 1; i < rows.length; i++) {
+      const tds = rows[i].querySelectorAll('td');
+      // Se tem tds com números, é provavelmente Quantidade
+      let hasNumbers = false;
+      for (const td of tds) {
+        if (/^\s*\d+\s*$/.test(td.textContent || '')) { hasNumbers = true; break; }
+      }
+      if (hasNumbers) { quantRow = rows[i]; break; }
+    }
+  }
+  if (!quantRow) return null;
+
+  // Lê os valores — precisam de alinhar com unitImgs por posição
+  // As cells das quantidades ficam nas mesmas "colunas" das imgs na unitRow
+  const unitCells = Array.from(unitRow.querySelectorAll('td, th'));
+  const quantCells = Array.from(quantRow.querySelectorAll('td, th'));
+  const offset = quantCells.length - unitCells.length; // label extra na quantRow?
+
+  const troops = {};
+  unitCells.forEach((unitCell, i) => {
+    const img = unitCell.querySelector('img[src*="unit_"]');
+    if (!img) return;
+    const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
+    const unit = m ? m[1] : null;
+    if (!unit) return;
+    const quantCell = quantCells[i + Math.max(0, offset)];
+    if (!quantCell) return;
+    const n = parseInt((quantCell.textContent || '').replace(/\D/g, '')) || 0;
+    if (n > 0) troops[unit] = n;
+  });
+
+  return Object.keys(troops).length > 0 ? troops : null;
+}
+
+function parseReport() {
+  let defCoords = null, defVillageName = null, defPlayerName = null, defTribeName = null;
+  let attPlayerName = null, attTribeName = null;
+
+  // Procura os blocos de atacante e defensor
+  // TW PT usa IDs #attack_info_att e #attack_info_def (ou variantes)
+  // Também há "attack_info_att_units" e "attack_info_def_units" para tropas
+  const attBlock = document.querySelector('#attack_info_att') || document.querySelector('#attack_info_attacker');
+  const defBlock = document.querySelector('#attack_info_def') || document.querySelector('#attack_info_defender');
+
+  // Atacante (para decidir se o defensor é o inimigo)
+  if (attBlock) {
+    const playerLink = attBlock.querySelector('a[href*="screen=info_player"]');
+    if (playerLink) attPlayerName = playerLink.textContent.trim();
+    const tribeLink = attBlock.querySelector('a[href*="screen=info_ally"]');
+    if (tribeLink) attTribeName = tribeLink.textContent.trim();
+  }
+
+  // Defensor
+  if (defBlock) {
+    const playerLink = defBlock.querySelector('a[href*="screen=info_player"]');
     if (playerLink) defPlayerName = playerLink.textContent.trim();
-    // Tribo defensor
-    const tribeLink = contentTable.querySelector('a[href*="screen=info_ally"]');
+    const tribeLink = defBlock.querySelector('a[href*="screen=info_ally"]');
     if (tribeLink) defTribeName = tribeLink.textContent.trim();
-    // Aldeia defensora (link com coords)
-    const villageLinks = contentTable.querySelectorAll('a[href*="screen=info_village"]');
+    const villageLinks = defBlock.querySelectorAll('a[href*="screen=info_village"]');
     for (const a of villageLinks) {
       const m = a.textContent.match(/\((\d+\|\d+)\)/);
       if (m) {
@@ -1533,64 +1620,62 @@ function parseReport() {
     }
   }
 
-  if (!defCoords) return null;
+  if (!defCoords) {
+    console.warn('[EOS report] Não encontrou coords do defensor');
+    return null;
+  }
 
-  // Tropas do defensor (se visíveis)
-  // Tabelas #attack_info_def_units e similar mostram contagens
-  const troops = {};
+  // Tropas na aldeia (defender quantities)
   const defUnitsTable = document.querySelector('#attack_info_def_units');
-  if (defUnitsTable) {
-    const headers = defUnitsTable.querySelectorAll('img[src*="unit_"]');
-    const rows = defUnitsTable.querySelectorAll('tr');
-    if (rows.length >= 2) {
-      // Primeira linha: units header. Segunda linha: quantidades que defenderam (linha "Quantidade" ou "A caminho")
-      // Procura a linha que contém as tropas que estavam na aldeia (Total defensivo)
-      // No TW PT a linha é "Quantidade:" ou similar
-      const unitCells = rows[0].querySelectorAll('img[src*="unit_"]');
-      const unitNames = Array.from(unitCells).map(img => {
-        const src = img.getAttribute('src') || '';
-        const m = src.match(/unit_(\w+)\.png/);
-        return m ? m[1] : null;
-      });
+  const troops = readUnitsTable(defUnitsTable);
 
-      // Procura a linha "Total" ou "Losses" para saber quantas tropas tinha
-      for (const row of rows) {
-        const firstCell = row.querySelector('td');
-        if (!firstCell) continue;
-        const label = (firstCell.textContent || '').toLowerCase().trim();
-        if (label.includes('quantidade') || label.includes('total')) {
-          const cells = row.querySelectorAll('td');
-          // Salta primeira cell (label)
-          unitNames.forEach((unit, i) => {
-            if (!unit) return;
-            const cell = cells[i + 1];
-            if (!cell) return;
-            const n = parseInt((cell.textContent || '').replace(/\D/g, '')) || 0;
-            if (n > 0) troops[unit] = n;
-          });
-          break;
+  // Tropas fora da aldeia — "Unidades fora da aldeia"
+  // O TW PT normalmente usa #attack_spy_away_units ou label específico
+  let troopsOutside = null;
+  // Procura primeiro um ID conhecido
+  const awayTable = document.querySelector('#attack_spy_away')
+    || document.querySelector('#attack_spy_away_units')
+    || document.querySelector('#attack_info_away');
+  if (awayTable) {
+    troopsOutside = readUnitsTable(awayTable);
+  }
+  // Fallback: procura heading "Unidades fora da aldeia" e a tabela a seguir
+  if (!troopsOutside) {
+    const headings = document.querySelectorAll('h3, h4, th, b, strong, .report-title, caption');
+    for (const h of headings) {
+      if (/unidades\s+fora\s+da\s+aldeia/i.test(h.textContent || '')) {
+        // Encontra a próxima tabela com imgs de unidades
+        let next = h.nextElementSibling;
+        while (next && !next.querySelector('img[src*="unit_"]')) next = next.nextElementSibling;
+        // Se h está dentro de uma row, tenta a tabela-pai e procurar
+        const parentTable = h.closest('table');
+        if (!next && parentTable) {
+          // A tabela inteira pode ser a tabela das tropas fora
+          troopsOutside = readUnitsTable(parentTable);
+        } else if (next) {
+          troopsOutside = readUnitsTable(next.tagName === 'TABLE' ? next : next.querySelector('table'));
         }
+        if (troopsOutside) break;
       }
     }
   }
 
   // Data do relatório
   let reportDate = null;
-  const dateTd = document.querySelector('#content_value th + td') || document.querySelector('.report_ReportAttack table td');
-  // Fallback: procura qualquer texto tipo "às HH:MM · dd/mm/aaaa"
   const allText = document.querySelector('#content_value')?.textContent || '';
-  const dateMatch = allText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[àas]{0,3}\s*(\d{1,2}):(\d{2})/i);
+  const dateMatch = allText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:[àas\s]*)?\s*(\d{1,2}):(\d{2})/);
   if (dateMatch) {
     const [, day, month, year, hh, mm] = dateMatch;
-    reportDate = new Date(Date.UTC(+year, +month - 1, +day, +hh, +mm)).toISOString();
+    // Assumir timezone local
+    reportDate = new Date(+year, +month - 1, +day, +hh, +mm).toISOString();
   } else {
-    reportDate = new Date().toISOString(); // fallback
+    reportDate = new Date().toISOString();
   }
 
-  // Nível da muralha (se visível)
+  // Edifícios (se relatório de espionagem)
   let wallLevel = null;
   const buildings = {};
-  const buildingsTable = document.querySelector('#attack_spy_building_data') || document.querySelector('#attack_info_att_buildings');
+  const buildingsTable = document.querySelector('#attack_spy_building_data') || document.querySelector('#attack_info_building');
   if (buildingsTable) {
     const data = buildingsTable.getAttribute('data-buildings') || buildingsTable.textContent;
     try {
@@ -1609,7 +1694,10 @@ function parseReport() {
     village_name:      defVillageName,
     owner_player_name: defPlayerName,
     owner_tribe_name:  defTribeName,
-    troops:            Object.keys(troops).length > 0 ? troops : null,
+    attacker_player:   attPlayerName,
+    attacker_tribe:    attTribeName,
+    troops,
+    troops_outside:    troopsOutside,
     buildings:         Object.keys(buildings).length > 0 ? buildings : null,
     wall_level:        wallLevel,
     report_date:       reportDate,
@@ -1640,8 +1728,32 @@ function injectSyncReportButton() {
       const data = parseReport();
       if (!data) throw new Error('Não foi possível ler o relatório');
 
-      const { token } = await getWorldStorage('token');
+      // Logs para debug
+      console.log('[EOS report] parsed:', data);
+
+      // Validação: o defensor tem que ser o inimigo (não o próprio user)
+      const { token, playerName, tribeName } = await getWorldStorage('token', 'playerName', 'tribeName');
       if (!token) throw new Error('Sem autenticação EOS');
+
+      if (data.owner_player_name && playerName && data.owner_player_name === playerName) {
+        throw new Error('Não sincroniza — és tu o defensor');
+      }
+      if (data.owner_tribe_name && tribeName && data.owner_tribe_name === tribeName) {
+        throw new Error('Não sincroniza — defensor é da tua tribo');
+      }
+
+      // Remove campos extra que não vão para o servidor
+      const payload = {
+        village_coords:    data.village_coords,
+        village_name:      data.village_name,
+        owner_player_name: data.owner_player_name,
+        owner_tribe_name:  data.owner_tribe_name,
+        troops:            data.troops,
+        troops_outside:    data.troops_outside,
+        buildings:         data.buildings,
+        wall_level:        data.wall_level,
+        report_date:       data.report_date,
+      };
 
       const res = await fetch(`${EOS_SERVER}/api/enemy-reports`, {
         method: 'POST',
@@ -1650,7 +1762,7 @@ function injectSyncReportButton() {
           Authorization: `Bearer ${token}`,
           'X-EOS-Version': chrome.runtime.getManifest().version,
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Erro: ${res.status}`);
 
@@ -1659,7 +1771,7 @@ function injectSyncReportButton() {
     } catch (e) {
       btn.textContent = `❌ ${e.message}`;
       btn.disabled = false;
-      setTimeout(() => { btn.textContent = '👁 Sincronizar com EOS'; }, 3000);
+      setTimeout(() => { btn.textContent = '👁 Sincronizar com EOS'; }, 4000);
     }
   });
 
