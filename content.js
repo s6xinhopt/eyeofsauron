@@ -1326,8 +1326,8 @@ function setupPopupObserver() {
     let ownerHtml;
     if (isEnemy) {
       const ago = enemyReport.report_date ? timeAgoShort(enemyReport.report_date) : '?';
-      const ownerName = enemyReport.owner_player_name ? escapeHtml(enemyReport.owner_player_name) : '?';
-      ownerHtml = `<div style="font-size:10px;color:#888;margin-top:4px">⚔ ${ownerName} · Relatório de há ${ago}</div>`;
+      const syncedBy = enemyReport.reported_by ? escapeHtml(enemyReport.reported_by) : '?';
+      ownerHtml = `<div style="font-size:10px;color:#888;margin-top:4px">⚔ ${syncedBy} · Relatório de há ${ago}</div>`;
     } else {
       const updatedAgo = v.updated_at ? timeAgoShort(v.updated_at) : '?';
       ownerHtml = `<div style="font-size:10px;color:#888;margin-top:4px">👁 ${v.player_name} · Tropas atualizadas há ${updatedAgo}</div>`;
