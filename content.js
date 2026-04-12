@@ -880,6 +880,7 @@ function injectShieldStyles() {
   document.head.appendChild(style);
 }
 
+let currentPlayerName = null;
 async function initMapOverlay() {
   if (!isMapPage()) return;
   injectShieldStyles();
@@ -887,8 +888,8 @@ async function initMapOverlay() {
   // Tenta obter o token; se ainda não existe (migração pendente), retry até 10s
   let eosToken = null;
   for (let i = 0; i < 10; i++) {
-    const { token } = await getWorldStorage('token');
-    if (token) { eosToken = token; break; }
+    const { token, playerName } = await getWorldStorage('token', 'playerName');
+    if (token) { eosToken = token; currentPlayerName = playerName; break; }
     await new Promise(r => setTimeout(r, 1000));
   }
   if (!eosToken) return;
@@ -1124,10 +1125,11 @@ function placeShields() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
-  // Classifica aldeias por bunk type
+  // Classifica aldeias por bunk type (ignora as próprias aldeias)
   const bunkeredMap = new Map();
   for (const [coords, v] of mapVillageData) {
     if (!v.troops_total) continue;
+    if (v.player_name && currentPlayerName && v.player_name === currentPlayerName) continue;
     const bt = classifyVillageForMap(v.troops_total);
     if (bt) bunkeredMap.set(coords, bt);
   }
@@ -1205,6 +1207,9 @@ function setupPopupObserver() {
 
     const v = mapVillageData.get(coordKey);
     if (!v) return;
+
+    // Não mostrar nas próprias aldeias (o jogo já dá essa info)
+    if (v.player_name && currentPlayerName && v.player_name === currentPlayerName) return;
 
     const t = v.troops_total;
     if (!t) return;
