@@ -434,10 +434,10 @@ function injectEOSButton() {
 
     const overlay = document.createElement('div');
     overlay.id = 'eos-panel-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:transparent;display:flex;align-items:center;justify-content:center;pointer-events:none';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:transparent;display:flex;align-items:center;justify-content:center';
 
     const container = document.createElement('div');
-    container.style.cssText = 'position:relative;width:98vw;max-width:1400px;height:90vh;background:#24201a;border:2px solid #e85020;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);pointer-events:auto';
+    container.style.cssText = 'position:relative;width:98vw;max-width:1400px;height:90vh;background:#24201a;border:2px solid #e85020;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6)';
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
