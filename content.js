@@ -756,7 +756,7 @@ function showSubscriptionOverlay(sub, tribeName) {
 
   const overlay = document.createElement('div');
   overlay.id = 'eos-sub-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:transparent;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif';
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
   const panel = document.createElement('div');
@@ -808,7 +808,7 @@ function showSubscriptionOverlay(sub, tribeName) {
 
       const panelOverlay = document.createElement('div');
       panelOverlay.id = 'eos-panel-overlay';
-      panelOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
+      panelOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:transparent;display:flex;align-items:center;justify-content:center';
 
       const container = document.createElement('div');
       container.style.cssText = 'position:relative;width:520px;max-width:95vw;height:520px;max-height:85vh;background:#24201a;border:2px solid #e8502040;border-radius:10px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.8)';
