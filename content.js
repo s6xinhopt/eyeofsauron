@@ -1034,7 +1034,7 @@ function toggleMapSettingsPanel() {
 
   const panel = document.createElement('div');
   panel.id = 'eos-map-settings-panel';
-  panel.style.cssText = `width:360px;max-height:60vh;
+  panel.style.cssText = `width:720px;max-width:92vw;max-height:80vh;
     background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:10px;
     font-size:11px;color:#f0e0c8;display:flex;flex-direction:column;overflow:hidden;
     box-shadow:0 12px 48px rgba(0,0,0,0.9),0 0 0 1px #e8502020`;
@@ -1100,37 +1100,43 @@ function buildSettingsPanelHTML() {
 
     <div style="flex:1;overflow-y:auto;padding:14px" class="eos-scroll">
 
-      <!-- Flags gerais -->
-      <div style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px;margin-bottom:6px">
-          <span style="font-size:12px;color:#f0e0c8">Mostrar bunks aliados</span>
+      <!-- Flags gerais (3 colunas) -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
+          <span style="font-size:11px;color:#f0e0c8">Bunks aliados</span>
           ${miniToggle('eos-toggle-ally', showAllyBunks)}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px;margin-bottom:6px">
-          <span style="font-size:12px;color:#f0e0c8">Mostrar bunks inimigos</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
+          <span style="font-size:11px;color:#f0e0c8">Bunks inimigos</span>
           ${miniToggle('eos-toggle-enemy', showEnemyBunks)}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
-          <span style="font-size:12px;color:#f0e0c8">Bunks animados</span>
+          <span style="font-size:11px;color:#f0e0c8">Animados</span>
           ${miniToggle('eos-toggle-anim', bunksAnimated)}
         </div>
       </div>
 
-      <!-- Aliados -->
-      <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
-        Bunks Aliados
-      </div>
+      <!-- Aliados e Inimigos lado a lado -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
+            Bunks Aliados
+          </div>
   `;
   for (let i = 0; i < bunkTypes.length; i++) html += bunkCardHTML(bunkTypes[i], i, 'ally');
 
   html += `
-      <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin:14px 0 8px;font-weight:700">
-        Bunks Inimigos
-      </div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
+            Bunks Inimigos
+          </div>
   `;
   for (let i = 0; i < enemyBunkTypes.length; i++) html += bunkCardHTML(enemyBunkTypes[i], i, 'enemy');
 
   html += `
+        </div>
+      </div>
     </div>
     <div style="padding:10px 14px;border-top:1px solid #e8502030;flex-shrink:0">
       <button id="eos-save-map-settings" style="width:100%;padding:10px;
