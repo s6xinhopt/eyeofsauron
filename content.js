@@ -1256,10 +1256,16 @@ function placeShields() {
       const report = enemyReportsData.get(coordKey);
       if (report) {
         // Considera tropas na aldeia OU tropas pertencentes (o que tiver mais info)
-        // Usa sempre o maior defPop das duas fontes
         const c1 = classifyEnemyTroops(report.troops);
         const c2 = classifyEnemyTroops(report.troops_outside);
         const defSize = (c1.defPop >= c2.defPop) ? c1.defSize : c2.defSize;
+        if (!window._eosEnemyDebug) {
+          window._eosEnemyDebug = true;
+          console.log('[EOS enemy shield]', coordKey,
+            'troops:', report.troops, 'defPop1:', c1.defPop, 'defSize1:', c1.defSize,
+            'troops_outside:', report.troops_outside, 'defPop2:', c2.defPop, 'defSize2:', c2.defSize,
+            'final:', defSize);
+        }
         if (defSize) {
           const centerX = left + VILLAGE_W / 2;
           const defIcon = document.createElement('div');
