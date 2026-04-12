@@ -1136,11 +1136,12 @@ function placeShields() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
-  // Classifica aldeias por bunk type
+  // Classifica aldeias por bunk type (usa troops_total ou troops_own como fallback)
   const bunkeredMap = new Map();
   for (const [coords, v] of mapVillageData) {
-    if (!v.troops_total) continue;
-    const bt = classifyVillageForMap(v.troops_total);
+    const troops = v.troops_total || v.troops_own;
+    if (!troops) continue;
+    const bt = classifyVillageForMap(troops);
     if (bt) bunkeredMap.set(coords, bt);
   }
   if (bunkeredMap.size === 0) return;
@@ -1183,13 +1184,14 @@ function startShieldTracking() {
   placeShields();
 
   // Observer: quando o TW adiciona/remove sectors (pan), adiciona escudos nos novos
-  // Observa só childList no #map (não subtree) — muito mais leve
+  // Observa map_container onde os sectors são efetivamente trocados
+  const container = document.getElementById('map_container') || mapEl;
   let debounce = null;
   const obs = new MutationObserver(() => {
     if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(placeShields, 500);
+    debounce = setTimeout(placeShields, 250);
   });
-  obs.observe(mapEl, { childList: true, subtree: false });
+  obs.observe(container, { childList: true, subtree: true });
 
   // Fallback periódico (intervalo grande, só para edge cases)
   setInterval(placeShields, 30000);
