@@ -881,6 +881,42 @@ function classifyVillageForMap(troopsTotal) {
   return null;
 }
 
+// Pop ofensiva por unidade (mesma lógica do content.js original)
+const OFF_POP = { axe: 1, light: 4, ram: 5, catapult: 8, marcher: 5 };
+function calcOffPop(troops) {
+  if (!troops) return 0;
+  let sum = 0;
+  for (const [u, pop] of Object.entries(OFF_POP)) {
+    sum += (troops[u] || 0) * pop;
+  }
+  return sum;
+}
+
+// Classifica tropas inimigas por tipo de força ofensiva/defensiva
+// Retorna { offSize, defSize } onde:
+//   offSize: 'full' (>=17k), 'semi' (>=10k), 'small' (<10k, >0), null
+//   defSize: 'light', 'medium', 'heavy', null (usa bunkTypes)
+function classifyEnemyTroops(troopsOwned) {
+  if (!troopsOwned) return { offSize: null, defSize: null };
+  const offPop = calcOffPop(troopsOwned);
+  const defPop = calcDefPop(troopsOwned);
+
+  let offSize = null;
+  if (offPop >= 17000) offSize = 'full';
+  else if (offPop >= 10000) offSize = 'semi';
+  else if (offPop > 0) offSize = 'small';
+
+  let defSize = null;
+  // Usa bunkTypes ordenados por minDefPop ascendente (light → heavy)
+  // Mas o nosso DEFAULT é minDefPop: 20000, 45000, 100000 (leve, médio, pesado)
+  // Para inimigos vamos usar os mesmos thresholds
+  if (defPop >= (bunkTypes[2]?.minDefPop || 100000)) defSize = 'heavy';
+  else if (defPop >= (bunkTypes[1]?.minDefPop || 45000)) defSize = 'medium';
+  else if (defPop >= (bunkTypes[0]?.minDefPop || 20000)) defSize = 'light';
+
+  return { offSize, defSize };
+}
+
 function injectShieldStyles() {
   if (document.getElementById('eos-shield-styles')) return;
   const style = document.createElement('style');
@@ -1136,6 +1172,7 @@ async function fetchEnemyReports(token) {
       if (r.village_coords) enemyReportsData.set(r.village_coords, r);
     }
     console.log('[EOS] enemy reports carregados:', enemyReportsData.size);
+    if (typeof placeEnemyIcons === 'function') placeEnemyIcons();
   } catch (e) {
     console.warn('[EOS] fetchEnemyReports erro:', e);
   }
@@ -1206,12 +1243,83 @@ function placeShields() {
   }
 }
 
+// Coloca ícones em aldeias inimigas com base nas tropas pertencentes (troops_outside)
+// - attack_large/medium/small.png para força ofensiva
+// - unit_sword.png com fundo colorido para bunk defensivo
+function placeEnemyIcons() {
+  if (!enemyReportsData || enemyReportsData.size === 0 || !eosMapEnabled) return;
+
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return;
+
+  const villageMapStr = mapEl.getAttribute('data-eos-villages');
+  if (!villageMapStr) return;
+  let villageIds;
+  try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
+
+  const OFF_IMG = {
+    full:   chrome.runtime.getURL('png/attack_large.png'),
+    semi:   chrome.runtime.getURL('png/attack_medium.png'),
+    small:  chrome.runtime.getURL('png/attack_small.png'),
+  };
+  const DEF_BG = {
+    light:  '#4caf50',
+    medium: '#ff9800',
+    heavy:  '#f44336',
+  };
+  const SWORD_IMG = chrome.runtime.getURL('png/unit_sword.png');
+
+  for (const [coordKey, report] of enemyReportsData) {
+    const vid = villageIds[coordKey];
+    if (!vid) continue;
+    const domVillage = document.getElementById('map_village_' + vid);
+    if (!domVillage) continue;
+
+    // Skip se já colocámos os ícones
+    if (domVillage.parentNode.querySelector(`[data-eos-enemy="${coordKey}"]`)) continue;
+
+    const { offSize, defSize } = classifyEnemyTroops(report.troops_outside);
+    if (!offSize && !defSize) continue;
+
+    const top = parseInt(domVillage.style.top, 10) || 0;
+    const left = parseInt(domVillage.style.left, 10) || 0;
+
+    // Ícone ofensivo (canto superior esquerdo)
+    if (offSize) {
+      const offIcon = document.createElement('img');
+      offIcon.src = OFF_IMG[offSize];
+      offIcon.dataset.eosEnemy = coordKey;
+      offIcon.title = `Ofensiva ${offSize} (${coordKey})`;
+      offIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${left - 10}px;top:${top - 8}px;width:20px;height:20px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))`;
+      domVillage.parentNode.insertBefore(offIcon, domVillage);
+    }
+
+    // Ícone defensivo (canto superior direito)
+    if (defSize) {
+      const defIcon = document.createElement('div');
+      defIcon.dataset.eosEnemy = coordKey;
+      defIcon.title = `Bunk ${defSize} (${coordKey})`;
+      defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${left + 22}px;top:${top - 8}px;width:18px;height:18px;border-radius:50%;background:${DEF_BG[defSize]};border:1.5px solid rgba(255,255,255,.7);box-shadow:0 0 4px ${DEF_BG[defSize]}aa,0 1px 3px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center`;
+      const sword = document.createElement('img');
+      sword.src = SWORD_IMG;
+      sword.style.cssText = 'width:12px;height:12px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
+      defIcon.appendChild(sword);
+      domVillage.parentNode.insertBefore(defIcon, domVillage);
+    }
+  }
+}
+
+function placeAllMapIcons() {
+  placeShields();
+  placeEnemyIcons();
+}
+
 function startShieldTracking() {
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
 
   // Primeiro render
-  placeShields();
+  placeAllMapIcons();
 
   // Observer: quando o TW adiciona/remove sectors (pan), adiciona escudos nos novos
   // Observa map_container onde os sectors são efetivamente trocados
@@ -1219,12 +1327,12 @@ function startShieldTracking() {
   let debounce = null;
   const obs = new MutationObserver(() => {
     if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(placeShields, 250);
+    debounce = setTimeout(placeAllMapIcons, 250);
   });
   obs.observe(container, { childList: true, subtree: true });
 
   // Fallback periódico (intervalo grande, só para edge cases)
-  setInterval(placeShields, 30000);
+  setInterval(placeAllMapIcons, 30000);
 }
 
 function setupPopupObserver() {
