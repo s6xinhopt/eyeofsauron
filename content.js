@@ -1598,51 +1598,45 @@ function readUnitsTable(table) {
   return { quantity, losses, remaining };
 }
 
-function parseReport() {
-  let defCoords = null, defVillageName = null, defPlayerName = null, defTribeName = null;
-  let attPlayerName = null, attTribeName = null;
+// Extrai info de um bloco (atacante ou defensor) — player, tribo, coords da aldeia
+function extractPartyInfo(block) {
+  if (!block) return null;
+  const info = { playerName: null, tribeName: null, villageCoords: null, villageName: null };
+  const playerLink = block.querySelector('a[href*="screen=info_player"]');
+  if (playerLink) info.playerName = playerLink.textContent.trim();
+  const tribeLink = block.querySelector('a[href*="screen=info_ally"]');
+  if (tribeLink) info.tribeName = tribeLink.textContent.trim();
+  const villageLinks = block.querySelectorAll('a[href*="screen=info_village"]');
+  for (const a of villageLinks) {
+    const m = a.textContent.match(/\((\d+\|\d+)\)/);
+    if (m) {
+      info.villageCoords = m[1];
+      info.villageName = a.textContent.replace(/\s*\(\d+\|\d+\)\s*/, '').trim();
+      break;
+    }
+  }
+  return info;
+}
 
-  // Procura os blocos de atacante e defensor
-  // TW PT usa IDs #attack_info_att e #attack_info_def (ou variantes)
-  // Também há "attack_info_att_units" e "attack_info_def_units" para tropas
+function parseReport() {
+  // Procura blocos de atacante e defensor
   const attBlock = document.querySelector('#attack_info_att') || document.querySelector('#attack_info_attacker');
   const defBlock = document.querySelector('#attack_info_def') || document.querySelector('#attack_info_defender');
 
-  // Atacante (para decidir se o defensor é o inimigo)
-  if (attBlock) {
-    const playerLink = attBlock.querySelector('a[href*="screen=info_player"]');
-    if (playerLink) attPlayerName = playerLink.textContent.trim();
-    const tribeLink = attBlock.querySelector('a[href*="screen=info_ally"]');
-    if (tribeLink) attTribeName = tribeLink.textContent.trim();
-  }
+  const attacker = extractPartyInfo(attBlock);
+  const defender = extractPartyInfo(defBlock);
 
-  // Defensor
-  if (defBlock) {
-    const playerLink = defBlock.querySelector('a[href*="screen=info_player"]');
-    if (playerLink) defPlayerName = playerLink.textContent.trim();
-    const tribeLink = defBlock.querySelector('a[href*="screen=info_ally"]');
-    if (tribeLink) defTribeName = tribeLink.textContent.trim();
-    const villageLinks = defBlock.querySelectorAll('a[href*="screen=info_village"]');
-    for (const a of villageLinks) {
-      const m = a.textContent.match(/\((\d+\|\d+)\)/);
-      if (m) {
-        defCoords = m[1];
-        defVillageName = a.textContent.replace(/\s*\(\d+\|\d+\)\s*/, '').trim();
-        break;
-      }
-    }
-  }
-
-  if (!defCoords) {
-    console.warn('[EOS report] Não encontrou coords do defensor');
+  if (!attacker || !defender) {
+    console.warn('[EOS report] Sem atacante ou defensor');
     return null;
   }
 
-  // Tropas na aldeia (defender) — usa REMAINING (quantidade - baixas)
-  // Se o defensor perdeu tudo, guardamos objeto vazio {} (indica "sabemos que é 0")
-  const defUnitsTable = document.querySelector('#attack_info_def_units');
-  const defTable = readUnitsTable(defUnitsTable);
-  const troops = defTable ? defTable.remaining : null;
+  // Lê tabelas de unidades
+  const attUnits = readUnitsTable(document.querySelector('#attack_info_att_units'));
+  const defUnits = readUnitsTable(document.querySelector('#attack_info_def_units'));
+
+  // Tropas na aldeia do defensor após o ataque (remaining = quantidade - baixas)
+  const defenderTroopsRemaining = defUnits ? defUnits.remaining : null;
 
   // Tropas fora da aldeia — "Unidades fora da aldeia"
   // Aqui não há baixas, então remaining = quantity
@@ -1757,18 +1751,78 @@ function parseReport() {
   }
 
   return {
-    village_coords:    defCoords,
-    village_name:      defVillageName,
-    owner_player_name: defPlayerName,
-    owner_tribe_name:  defTribeName,
-    attacker_player:   attPlayerName,
-    attacker_tribe:    attTribeName,
-    troops,
-    troops_outside:    troopsOutside,
-    buildings:         Object.keys(buildings).length > 0 ? buildings : null,
-    wall_level:        wallLevel,
-    report_date:       reportDate,
+    attacker,
+    defender,
+    defenderTroopsRemaining,
+    attackerTroopsSent: attUnits ? attUnits.quantity : null,
+    attackerTroopsLosses: attUnits ? attUnits.losses : null,
+    troopsOutside,       // "Unidades fora da aldeia" (só existe em relatórios de espionagem/ataque nosso)
+    buildings: Object.keys(buildings).length > 0 ? buildings : null,
+    wallLevel,
+    reportDate,
   };
+}
+
+// Decide qual é a aldeia inimiga e constrói o payload a enviar ao servidor
+// Retorna { payload, reason } ou { skip: 'motivo' }
+function buildEnemyReportPayload(parsed, selfPlayerName, selfTribeName) {
+  if (!parsed) return { skip: 'Não foi possível ler o relatório' };
+  const { attacker, defender, defenderTroopsRemaining, attackerTroopsSent, attackerTroopsLosses, troopsOutside, buildings, wallLevel, reportDate } = parsed;
+
+  const isDefenderSelf = defender.playerName === selfPlayerName
+    || (selfTribeName && defender.tribeName === selfTribeName);
+  const isAttackerSelf = attacker.playerName === selfPlayerName
+    || (selfTribeName && attacker.tribeName === selfTribeName);
+
+  // Caso 1: Ataque nosso — defensor é o inimigo, guardamos "tropas na aldeia" (remaining)
+  if (isAttackerSelf && !isDefenderSelf && defender.villageCoords) {
+    return {
+      payload: {
+        village_coords:    defender.villageCoords,
+        village_name:      defender.villageName,
+        owner_player_name: defender.playerName,
+        owner_tribe_name:  defender.tribeName,
+        troops:            defenderTroopsRemaining,  // o que sobrou na aldeia
+        troops_outside:    troopsOutside,            // de spy report, se houver
+        buildings, wall_level: wallLevel,
+        report_date:       reportDate,
+      },
+      reason: 'attack',
+    };
+  }
+
+  // Caso 2: Defesa nossa — atacante é o inimigo, guardamos "tropas que sobreviveram" como pertencentes
+  if (isDefenderSelf && !isAttackerSelf && attacker.villageCoords) {
+    // Tropas do atacante que sobreviveram = sent - losses. Pertencem à aldeia do atacante.
+    const survivors = {};
+    if (attackerTroopsSent) {
+      for (const unit of Object.keys(attackerTroopsSent)) {
+        const sent = attackerTroopsSent[unit] || 0;
+        const lost = (attackerTroopsLosses && attackerTroopsLosses[unit]) || 0;
+        const alive = Math.max(0, sent - lost);
+        if (alive > 0) survivors[unit] = alive;
+      }
+    }
+    return {
+      payload: {
+        village_coords:    attacker.villageCoords,
+        village_name:      attacker.villageName,
+        owner_player_name: attacker.playerName,
+        owner_tribe_name:  attacker.tribeName,
+        // "Tropas na aldeia" é null (não sabemos o que está lá agora)
+        troops:            null,
+        // "Tropas pertencentes" = sobreviventes que voltaram para a aldeia
+        troops_outside:    Object.keys(survivors).length > 0 ? survivors : null,
+        buildings: null, wall_level: null,
+        report_date:       reportDate,
+      },
+      reason: 'defense',
+    };
+  }
+
+  if (isAttackerSelf && isDefenderSelf) return { skip: 'Ataque interno (membro da tribo)' };
+  if (!isAttackerSelf && !isDefenderSelf) return { skip: 'Relatório não te envolve' };
+  return { skip: 'Não foi possível determinar a aldeia inimiga' };
 }
 
 function injectSyncReportButton() {
@@ -1792,35 +1846,15 @@ function injectSyncReportButton() {
     btn.disabled = true;
     btn.textContent = '⏳ A sincronizar...';
     try {
-      const data = parseReport();
-      if (!data) throw new Error('Não foi possível ler o relatório');
+      const parsed = parseReport();
+      console.log('[EOS report] parsed:', parsed);
 
-      // Logs para debug
-      console.log('[EOS report] parsed:', data);
-
-      // Validação: o defensor tem que ser o inimigo (não o próprio user)
       const { token, playerName, tribeName } = await getWorldStorage('token', 'playerName', 'tribeName');
       if (!token) throw new Error('Sem autenticação EOS');
 
-      if (data.owner_player_name && playerName && data.owner_player_name === playerName) {
-        throw new Error('Não sincroniza — és tu o defensor');
-      }
-      if (data.owner_tribe_name && tribeName && data.owner_tribe_name === tribeName) {
-        throw new Error('Não sincroniza — defensor é da tua tribo');
-      }
-
-      // Remove campos extra que não vão para o servidor
-      const payload = {
-        village_coords:    data.village_coords,
-        village_name:      data.village_name,
-        owner_player_name: data.owner_player_name,
-        owner_tribe_name:  data.owner_tribe_name,
-        troops:            data.troops,
-        troops_outside:    data.troops_outside,
-        buildings:         data.buildings,
-        wall_level:        data.wall_level,
-        report_date:       data.report_date,
-      };
+      const result = buildEnemyReportPayload(parsed, playerName, tribeName);
+      if (result.skip) throw new Error(result.skip);
+      const { payload, reason } = result;
 
       const res = await fetch(`${EOS_SERVER}/api/enemy-reports`, {
         method: 'POST',
@@ -1833,7 +1867,7 @@ function injectSyncReportButton() {
       });
       if (!res.ok) throw new Error(`Erro: ${res.status}`);
 
-      btn.textContent = '✔ Sincronizado';
+      btn.textContent = reason === 'defense' ? '✔ Defesa sincronizada' : '✔ Ataque sincronizado';
       btn.style.background = 'linear-gradient(180deg,#4caf50,#2d8030)';
     } catch (e) {
       btn.textContent = `❌ ${e.message}`;
