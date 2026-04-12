@@ -69,22 +69,29 @@
     var mapEl = document.getElementById('map');
     if (!mapEl) return;
 
-    // Guarda posição + village IDs no DOM
+    // Guarda posição no DOM (só atualiza quando muda)
+    var lastCx = '', lastCy = '';
     setInterval(function() {
       try {
         var pos = window.TWMap.pos;
-        if (pos) {
+        if (pos && (pos[0] != lastCx || pos[1] != lastCy)) {
+          lastCx = pos[0]; lastCy = pos[1];
           mapEl.setAttribute('data-eos-cx', pos[0]);
           mapEl.setAttribute('data-eos-cy', pos[1]);
         }
       } catch (e) {}
-    }, 50);
+    }, 500);
 
-    // Escreve mapeamento coord→id das aldeias visíveis (menos frequente)
+    // Escreve mapeamento coord→id das aldeias visíveis (só quando muda)
+    var lastVillageHash = '';
     setInterval(function() {
       try {
         var villages = window.TWMap.villages;
         if (!villages) return;
+        var keys = Object.keys(villages);
+        var hash = keys.length + '_' + (keys[0] || '') + '_' + (keys[keys.length-1] || '');
+        if (hash === lastVillageHash) return;
+        lastVillageHash = hash;
         var map = {};
         for (var key in villages) {
           var v = villages[key];
@@ -96,7 +103,7 @@
         }
         mapEl.setAttribute('data-eos-villages', JSON.stringify(map));
       } catch (e) {}
-    }, 2000);
+    }, 3000);
   }
 
   tryStart();

@@ -1171,18 +1171,16 @@ function startShieldTracking() {
   placeShields();
 
   // Observer: quando o TW adiciona/remove sectors (pan), adiciona escudos nos novos
-  const container = document.getElementById('map_container');
-  if (container) {
-    let debounce = null;
-    const obs = new MutationObserver(() => {
-      if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(placeShields, 300);
-    });
-    obs.observe(container, { childList: true, subtree: true });
-  }
+  // Observa só childList no #map (não subtree) — muito mais leve
+  let debounce = null;
+  const obs = new MutationObserver(() => {
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(placeShields, 500);
+  });
+  obs.observe(mapEl, { childList: true, subtree: false });
 
-  // Fallback periódico
-  setInterval(placeShields, 5000);
+  // Fallback periódico (intervalo grande, só para edge cases)
+  setInterval(placeShields, 30000);
 }
 
 function setupPopupObserver() {
@@ -1260,29 +1258,46 @@ function setupPopupObserver() {
     return Math.floor(h / 24) + 'd';
   }
 
-  // Observa document.body para apanhar quando o popup aparece/muda
+  // Observa o popup do mapa diretamente (mais leve que document.body)
   let lastPopupCoord = '';
-  const obs = new MutationObserver(() => {
+  let debouncePopup = null;
+  function processPopup() {
     const popup = document.getElementById('map_popup');
     if (!popup || popup.offsetHeight === 0) return;
-
     const th = popup.querySelector('th');
     if (!th) return;
     const coordMatch = th.textContent.match(/\((\d+\|\d+)\)/);
     if (!coordMatch) return;
-
-    // Só injeta se mudou de aldeia ou ainda não tem a nossa row
     const coord = coordMatch[1];
     if (coord === lastPopupCoord && popup.querySelector('#' + EOS_TROOP_ROW_ID)) return;
     lastPopupCoord = coord;
-
-    // Remove anterior e injeta
     const old = popup.querySelector('#' + EOS_TROOP_ROW_ID);
     if (old) old.remove();
-
     requestAnimationFrame(injectTroopInfo);
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Tenta observar o popup direto. Se não existe ainda, observa o map_container
+  // (que é onde o popup aparece) com debounce
+  function attachObserver() {
+    const popup = document.getElementById('map_popup');
+    if (popup) {
+      const obs = new MutationObserver(() => {
+        if (debouncePopup) clearTimeout(debouncePopup);
+        debouncePopup = setTimeout(processPopup, 100);
+      });
+      obs.observe(popup, { childList: true, subtree: true, characterData: true });
+      return true;
+    }
+    return false;
+  }
+
+  // Espera o popup existir antes de observar (evita observar document.body)
+  if (!attachObserver()) {
+    const checkInterval = setInterval(() => {
+      if (attachObserver()) clearInterval(checkInterval);
+    }, 1000);
+    setTimeout(() => clearInterval(checkInterval), 30000);
+  }
 }
 
 function fmtK(n) {
