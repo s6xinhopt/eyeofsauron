@@ -173,7 +173,7 @@ function readPerVillageTroops(onProgress) {
         if (v > 0) troops[unit] = v;
       }
     }
-    return Object.keys(troops).length > 0 ? troops : null;
+    return troops;
   }
 
   // Conta total de aldeias primeiro (para a barra de progresso)
@@ -197,7 +197,7 @@ function readPerVillageTroops(onProgress) {
       const href = firstCellLink.getAttribute('href') || '';
       const idMatch = href.match(/village=(\d+)/) || href.match(/id=(\d+)/);
       if (idMatch) {
-        if (currentVillage && (currentVillage.troops_total || currentVillage.troops_own)) {
+        if (currentVillage) {
           villages.push(currentVillage);
         }
         const text = (firstCellLink.textContent || '').trim();
@@ -349,13 +349,23 @@ function findGroupElement(groupId) {
   const scope = findGroupsContainer() || document;
 
   if (groupId === '0') {
+    // "Todos" pode ter várias formas no TW: group=0, group_id=0, sem group=, ou texto "Todos"
     return scope.querySelector('a[href*="group=0"]')
-        || scope.querySelector('a[href*="mode=call"]:not([href*="group="])')
+        || scope.querySelector('a[href*="group_id=0"]')
         || scope.querySelector('a[href*="mode=units"]:not([href*="group="])')
+        || scope.querySelector('a[href*="mode=call"]:not([href*="group="])')
+        || (() => {
+             // Fallback: procura link com texto "Todos" na zona de grupos
+             for (const a of scope.querySelectorAll('a')) {
+               if (/^\s*todos\s*$/i.test(a.textContent)) return a;
+             }
+             return null;
+           })()
         || null;
   }
 
   return scope.querySelector(`a[href*="group=${groupId}"]`)
+      || scope.querySelector(`a[href*="group_id=${groupId}"]`)
       || scope.querySelector(`a[data-group-id="${groupId}"]`)
       || scope.querySelector(`span.group-menu-item[onclick*="${groupId}"]`)
       || (() => {
