@@ -892,12 +892,13 @@ function calcOffPop(troops) {
   return sum;
 }
 
+// Thresholds para classificar tropas inimigas (mais baixos que os bunks da tribo
+// — são tropas observadas em relatórios, não a defesa total da aldeia)
+const ENEMY_DEF_THRESHOLDS = { light: 3000, medium: 10000, heavy: 20000 };
+
 // Classifica tropas inimigas por tipo de força ofensiva/defensiva
-// Retorna { offSize, defSize } onde:
-//   offSize: 'full' (>=17k), 'semi' (>=10k), 'small' (<10k, >0), null
-//   defSize: 'light', 'medium', 'heavy', null (usa bunkTypes)
 function classifyEnemyTroops(troopsOwned) {
-  if (!troopsOwned) return { offSize: null, defSize: null };
+  if (!troopsOwned) return { offSize: null, defSize: null, offPop: 0, defPop: 0 };
   const offPop = calcOffPop(troopsOwned);
   const defPop = calcDefPop(troopsOwned);
 
@@ -907,14 +908,11 @@ function classifyEnemyTroops(troopsOwned) {
   else if (offPop > 0) offSize = 'small';
 
   let defSize = null;
-  // Usa bunkTypes ordenados por minDefPop ascendente (light → heavy)
-  // Mas o nosso DEFAULT é minDefPop: 20000, 45000, 100000 (leve, médio, pesado)
-  // Para inimigos vamos usar os mesmos thresholds
-  if (defPop >= (bunkTypes[2]?.minDefPop || 100000)) defSize = 'heavy';
-  else if (defPop >= (bunkTypes[1]?.minDefPop || 45000)) defSize = 'medium';
-  else if (defPop >= (bunkTypes[0]?.minDefPop || 20000)) defSize = 'light';
+  if (defPop >= ENEMY_DEF_THRESHOLDS.heavy) defSize = 'heavy';
+  else if (defPop >= ENEMY_DEF_THRESHOLDS.medium) defSize = 'medium';
+  else if (defPop >= ENEMY_DEF_THRESHOLDS.light) defSize = 'light';
 
-  return { offSize, defSize };
+  return { offSize, defSize, offPop, defPop };
 }
 
 function injectShieldStyles() {
@@ -1257,7 +1255,11 @@ function placeShields() {
     if (!alreadyEnemy && hasEnemy && !(hasTribe && mapVillageData.get(coordKey))) {
       const report = enemyReportsData.get(coordKey);
       if (report) {
-        const { defSize } = classifyEnemyTroops(report.troops_outside);
+        // Considera tropas na aldeia OU tropas pertencentes (o que tiver mais info)
+        // Usa sempre o maior defPop das duas fontes
+        const c1 = classifyEnemyTroops(report.troops);
+        const c2 = classifyEnemyTroops(report.troops_outside);
+        const defSize = (c1.defPop >= c2.defPop) ? c1.defSize : c2.defSize;
         if (defSize) {
           const centerX = left + VILLAGE_W / 2;
           const defIcon = document.createElement('div');
