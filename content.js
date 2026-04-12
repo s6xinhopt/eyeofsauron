@@ -1266,7 +1266,8 @@ function setupPopupObserver() {
     // Decide a fonte dos dados (tribo > relatório inimigo)
     const isEnemy = !v && !!enemyReport;
     const t = v ? v.troops_total : enemyReport?.troops;
-    if (!t) return;
+    // t pode ser {} (sabemos que é 0) para relatórios inimigos — ainda queremos mostrar
+    if (!t && !(isEnemy && enemyReport.troops_outside)) return;
 
     const bt = classifyVillageForMap(t);
 
@@ -1299,18 +1300,22 @@ function setupPopupObserver() {
       }
       html += '</tr><tr>';
       for (const u of units) {
-        const val = troopsObj[u] || 0;
+        const val = (troopsObj && troopsObj[u]) || 0;
         html += `<td style="text-align:center;font-size:13px;font-weight:700;color:${val > 0 ? '#000' : '#bbb'};padding:2px">${val > 0 ? fmtK(val) : '-'}</td>`;
       }
       html += '</tr></table>';
       return html;
     }
 
-    // Tabela de tropas na aldeia
-    let troopHtml = renderTroopsTable(t, isEnemy && enemyReport.troops_outside ? 'Na aldeia' : null);
+    // Para inimigos: se troops é {} (vazio), mostra tabela com zeros (sabemos que está vazia)
+    const hasInVillage = isEnemy ? (enemyReport.troops !== null && enemyReport.troops !== undefined) : !!t;
+    const hasOutside = isEnemy && !!enemyReport.troops_outside;
 
-    // Se for inimigo e tiver tropas fora, mostrar tabela adicional
-    if (isEnemy && enemyReport.troops_outside) {
+    let troopHtml = '';
+    if (hasInVillage) {
+      troopHtml += renderTroopsTable(t || {}, hasOutside ? 'Na aldeia' : null);
+    }
+    if (hasOutside) {
       troopHtml += renderTroopsTable(enemyReport.troops_outside, 'Fora da aldeia');
     }
 
@@ -1515,74 +1520,79 @@ function showEosNotification(text, icon) {
 
 // ── Sincronização de relatórios inimigos ───────────────────────────────────
 
-// Lê uma tabela de tropas com a estrutura típica do TW:
-// Linha 1: imgs das unidades (unit_spear.png etc)
-// Linha 2: contagens (primeira célula pode ser label "Quantidade:")
-// Linha 3: perdas (opcional, primeira célula "Baixas:")
-// Retorna objeto { spear: N, sword: N, ... } da linha de quantidades
+// Lê uma tabela de tropas do TW e devolve quantidade + baixas por unidade.
+// Formato:
+// Linha: imgs das unidades (unit_spear.png etc)
+// Linha: "Quantidade:" + valores
+// Linha: "Baixas:" + valores (opcional)
+// Retorna { quantity: {unit: N}, losses: {unit: N}, remaining: {unit: N} }
+// `remaining` é calculado como max(0, quantity - losses).
+// Retorna null se não conseguiu ler a tabela.
 function readUnitsTable(table) {
   if (!table) return null;
   const rows = Array.from(table.querySelectorAll('tr'));
   if (rows.length < 2) return null;
 
-  // Linha de unidades (contém imgs unit_)
+  // Linha das imgs das unidades
   let unitRow = null;
   for (const row of rows) {
     if (row.querySelector('img[src*="unit_"]')) { unitRow = row; break; }
   }
   if (!unitRow) return null;
 
-  const unitImgs = Array.from(unitRow.querySelectorAll('img[src*="unit_"]'));
-  const unitNames = unitImgs.map(img => {
-    const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
-    return m ? m[1] : null;
-  });
-
-  // Procura a linha de quantidades (NÃO é baixas/losses)
-  // Estratégia: primeira linha com números que NÃO contém "baixa"/"losses" no texto
-  // Se existir linha com label "Quantidade:" usa essa
-  let quantRow = null;
+  // Procura linhas Quantidade e Baixas por label
+  let quantRow = null, lossesRow = null;
   for (const row of rows) {
-    const firstCell = row.querySelector('td');
+    const firstCell = row.querySelector('td, th');
     if (!firstCell) continue;
     const label = (firstCell.textContent || '').toLowerCase().trim();
-    if (label.includes('quantidade')) { quantRow = row; break; }
+    if (!quantRow && label.includes('quantidade')) quantRow = row;
+    else if (!lossesRow && (label.includes('baixa') || label.includes('losses'))) lossesRow = row;
   }
-  // Fallback: primeira linha após unitRow com números (não é a row das imgs)
+  // Fallback: sem labels, assume primeira linha de números após unitRow é quantidade, segunda é baixas
   if (!quantRow) {
     const unitIdx = rows.indexOf(unitRow);
+    const numRows = [];
     for (let i = unitIdx + 1; i < rows.length; i++) {
-      const tds = rows[i].querySelectorAll('td');
-      // Se tem tds com números, é provavelmente Quantidade
+      const tds = rows[i].querySelectorAll('td, th');
       let hasNumbers = false;
-      for (const td of tds) {
-        if (/^\s*\d+\s*$/.test(td.textContent || '')) { hasNumbers = true; break; }
-      }
-      if (hasNumbers) { quantRow = rows[i]; break; }
+      for (const td of tds) if (/\d/.test(td.textContent || '')) { hasNumbers = true; break; }
+      if (hasNumbers) numRows.push(rows[i]);
     }
+    if (numRows[0]) quantRow = numRows[0];
+    if (numRows[1]) lossesRow = numRows[1];
   }
   if (!quantRow) return null;
 
-  // Lê os valores — precisam de alinhar com unitImgs por posição
-  // As cells das quantidades ficam nas mesmas "colunas" das imgs na unitRow
-  const unitCells = Array.from(unitRow.querySelectorAll('td, th'));
-  const quantCells = Array.from(quantRow.querySelectorAll('td, th'));
-  const offset = quantCells.length - unitCells.length; // label extra na quantRow?
+  function readRowValues(row, unitRowRef) {
+    const unitCells = Array.from(unitRowRef.querySelectorAll('td, th'));
+    const valCells  = Array.from(row.querySelectorAll('td, th'));
+    const offset = valCells.length - unitCells.length;
+    const result = {};
+    unitCells.forEach((unitCell, i) => {
+      const img = unitCell.querySelector('img[src*="unit_"]');
+      if (!img) return;
+      const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
+      const unit = m ? m[1] : null;
+      if (!unit) return;
+      const valCell = valCells[i + Math.max(0, offset)];
+      if (!valCell) return;
+      const n = parseInt((valCell.textContent || '').replace(/\D/g, '')) || 0;
+      result[unit] = n;
+    });
+    return result;
+  }
 
-  const troops = {};
-  unitCells.forEach((unitCell, i) => {
-    const img = unitCell.querySelector('img[src*="unit_"]');
-    if (!img) return;
-    const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
-    const unit = m ? m[1] : null;
-    if (!unit) return;
-    const quantCell = quantCells[i + Math.max(0, offset)];
-    if (!quantCell) return;
-    const n = parseInt((quantCell.textContent || '').replace(/\D/g, '')) || 0;
-    if (n > 0) troops[unit] = n;
-  });
+  const quantity = readRowValues(quantRow, unitRow);
+  const losses   = lossesRow ? readRowValues(lossesRow, unitRow) : {};
 
-  return Object.keys(troops).length > 0 ? troops : null;
+  // Remaining = quantidade - baixas (nunca negativo)
+  const remaining = {};
+  for (const unit of Object.keys(quantity)) {
+    remaining[unit] = Math.max(0, (quantity[unit] || 0) - (losses[unit] || 0));
+  }
+
+  return { quantity, losses, remaining };
 }
 
 function parseReport() {
@@ -1625,39 +1635,43 @@ function parseReport() {
     return null;
   }
 
-  // Tropas na aldeia (defender quantities)
+  // Tropas na aldeia (defender) — usa REMAINING (quantidade - baixas)
+  // Se o defensor perdeu tudo, guardamos objeto vazio {} (indica "sabemos que é 0")
   const defUnitsTable = document.querySelector('#attack_info_def_units');
-  const troops = readUnitsTable(defUnitsTable);
+  const defTable = readUnitsTable(defUnitsTable);
+  const troops = defTable ? defTable.remaining : null;
 
   // Tropas fora da aldeia — "Unidades fora da aldeia"
-  // O TW PT normalmente usa #attack_spy_away_units ou label específico
+  // Aqui não há baixas, então remaining = quantity
   let troopsOutside = null;
-  // Procura primeiro um ID conhecido
   const awayTable = document.querySelector('#attack_spy_away')
     || document.querySelector('#attack_spy_away_units')
     || document.querySelector('#attack_info_away');
+  let awayResult = null;
   if (awayTable) {
-    troopsOutside = readUnitsTable(awayTable);
+    awayResult = readUnitsTable(awayTable);
   }
-  // Fallback: procura heading "Unidades fora da aldeia" e a tabela a seguir
-  if (!troopsOutside) {
+  if (!awayResult) {
+    // Fallback: procura heading "Unidades fora da aldeia" e a tabela seguinte
     const headings = document.querySelectorAll('h3, h4, th, b, strong, .report-title, caption');
     for (const h of headings) {
       if (/unidades\s+fora\s+da\s+aldeia/i.test(h.textContent || '')) {
-        // Encontra a próxima tabela com imgs de unidades
         let next = h.nextElementSibling;
         while (next && !next.querySelector('img[src*="unit_"]')) next = next.nextElementSibling;
-        // Se h está dentro de uma row, tenta a tabela-pai e procurar
         const parentTable = h.closest('table');
-        if (!next && parentTable) {
-          // A tabela inteira pode ser a tabela das tropas fora
-          troopsOutside = readUnitsTable(parentTable);
-        } else if (next) {
-          troopsOutside = readUnitsTable(next.tagName === 'TABLE' ? next : next.querySelector('table'));
-        }
-        if (troopsOutside) break;
+        if (!next && parentTable) awayResult = readUnitsTable(parentTable);
+        else if (next) awayResult = readUnitsTable(next.tagName === 'TABLE' ? next : next.querySelector('table'));
+        if (awayResult) break;
       }
     }
+  }
+  if (awayResult) {
+    // Filtra só unidades com valor > 0
+    troopsOutside = {};
+    for (const [u, n] of Object.entries(awayResult.quantity)) {
+      if (n > 0) troopsOutside[u] = n;
+    }
+    if (Object.keys(troopsOutside).length === 0) troopsOutside = null;
   }
 
   // Data do relatório
