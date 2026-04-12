@@ -1353,6 +1353,75 @@ async function checkUpdateNotification() {
   document.body.appendChild(banner);
 }
 
+// ── Notificação fora do painel (canto direito da página) ────────────────────
+let _eosNotifyTimeout = null;
+function showEosNotification(text, icon) {
+  let n = document.getElementById('eos-notification');
+  if (!n) {
+    n = document.createElement('div');
+    n.id = 'eos-notification';
+    n.style.cssText = 'position:fixed;top:80px;right:20px;z-index:2147483646;'
+      + 'display:flex;align-items:center;gap:10px;'
+      + 'background:linear-gradient(135deg,#2a1810,#1a1208);'
+      + 'border:1px solid #e8783040;border-left:3px solid #e87830;'
+      + 'border-radius:8px;padding:10px 16px;'
+      + 'box-shadow:0 4px 20px rgba(0,0,0,.5);'
+      + 'font-family:Segoe UI,system-ui,sans-serif;font-size:13px;'
+      + 'color:#f0b878;font-weight:600;'
+      + 'transition:opacity .2s, transform .2s;opacity:0;transform:translateX(20px)';
+    document.body.appendChild(n);
+  }
+  // Atualiza estilo conforme tipo
+  if (icon === 'ok') {
+    n.style.background = 'linear-gradient(135deg,#1a2a10,#141a08)';
+    n.style.borderColor = '#4caf50';
+    n.style.borderLeftColor = '#4caf50';
+    n.style.color = '#6fcf6f';
+  } else {
+    n.style.background = 'linear-gradient(135deg,#2a1810,#1a1208)';
+    n.style.borderColor = '#e8783040';
+    n.style.borderLeftColor = '#e87830';
+    n.style.color = '#f0b878';
+  }
+  // Conteúdo
+  n.innerHTML = '';
+  if (icon === 'loading') {
+    const sp = document.createElement('span');
+    sp.style.cssText = 'width:14px;height:14px;border:2px solid #3a2a1a;border-top-color:#e87830;border-radius:50%;display:inline-block;animation:eos-spin .8s linear infinite';
+    n.appendChild(sp);
+  } else if (icon === 'ok') {
+    const ok = document.createElement('span');
+    ok.textContent = '✔';
+    ok.style.cssText = 'font-size:14px;font-weight:700';
+    n.appendChild(ok);
+  }
+  const txt = document.createElement('span');
+  txt.textContent = text;
+  n.appendChild(txt);
+
+  // Inject animation keyframes once
+  if (!document.getElementById('eos-notify-anim')) {
+    const st = document.createElement('style');
+    st.id = 'eos-notify-anim';
+    st.textContent = '@keyframes eos-spin { to { transform: rotate(360deg) } }';
+    document.head.appendChild(st);
+  }
+
+  // Mostra
+  requestAnimationFrame(() => {
+    n.style.opacity = '1';
+    n.style.transform = 'translateX(0)';
+  });
+
+  // Auto-hide após 2s
+  if (_eosNotifyTimeout) clearTimeout(_eosNotifyTimeout);
+  _eosNotifyTimeout = setTimeout(() => {
+    n.style.opacity = '0';
+    n.style.transform = 'translateX(20px)';
+    setTimeout(() => n.remove(), 250);
+  }, 2000);
+}
+
 function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); }
 if (document.readyState === 'loading') {
   // DOMContentLoaded é suficiente — não esperar por load (imagens/css)
@@ -1369,6 +1438,10 @@ window.addEventListener('message', (event) => {
   // Mensagens do iframe do painel EOS — validar origem
   const iframeOrigin = EOS_SERVER.replace(/\/$/, '');
   if (event.origin === iframeOrigin) {
+    if (event.data.type === 'EOS_NOTIFY') {
+      showEosNotification(event.data.text || '', event.data.icon || 'info');
+      return;
+    }
     if (event.data.type === 'EOS_SYNC_SCHEDULES') {
       getWorldStorage('token').then(({ token }) => {
         if (token) chrome.runtime.sendMessage({ type: 'SYNC_SCHEDULES', token, world: CURRENT_WORLD });
