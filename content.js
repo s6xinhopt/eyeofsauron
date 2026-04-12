@@ -858,7 +858,17 @@ const DEFAULT_BUNK_TYPES = [
   { id: 'medium_bunk', name: 'Bunk Médio', color: '#ff9800', minDefPop: 45000, enabled: true },
   { id: 'heavy_bunk', name: 'Bunk Pesado', color: '#f44336', minDefPop: 100000, enabled: true },
 ];
+const DEFAULT_ENEMY_BUNK_TYPES = [
+  { id: 'enemy_weak',   name: 'Fraca',   color: '#ffffff', minDefPop: 1,    enabled: true },
+  { id: 'enemy_light',  name: 'Leve',    color: '#4caf50', minDefPop: 3000, enabled: true },
+  { id: 'enemy_medium', name: 'Média',   color: '#ff9800', minDefPop: 10000, enabled: true },
+  { id: 'enemy_heavy',  name: 'Pesada',  color: '#f44336', minDefPop: 20000, enabled: true },
+];
 let bunkTypes = [...DEFAULT_BUNK_TYPES];
+let enemyBunkTypes = [...DEFAULT_ENEMY_BUNK_TYPES];
+let showAllyBunks = true;
+let showEnemyBunks = true;
+let bunksAnimated = true;
 
 function makeShieldElement(color) {
   const el = document.createElement('div');
@@ -892,13 +902,9 @@ function calcOffPop(troops) {
   return sum;
 }
 
-// Thresholds para classificar tropas inimigas (mais baixos que os bunks da tribo
-// — são tropas observadas em relatórios, não a defesa total da aldeia)
-const ENEMY_DEF_THRESHOLDS = { light: 3000, medium: 10000, heavy: 20000 };
-
-// Classifica tropas inimigas por tipo de força ofensiva/defensiva
+// Classifica tropas inimigas por força defensiva usando a config enemyBunkTypes
 function classifyEnemyTroops(troopsOwned) {
-  if (!troopsOwned) return { offSize: null, defSize: null, offPop: 0, defPop: 0 };
+  if (!troopsOwned) return { offSize: null, defSize: null, defColor: null, offPop: 0, defPop: 0 };
   const offPop = calcOffPop(troopsOwned);
   const defPop = calcDefPop(troopsOwned);
 
@@ -907,13 +913,19 @@ function classifyEnemyTroops(troopsOwned) {
   else if (offPop >= 10000) offSize = 'semi';
   else if (offPop > 0) offSize = 'small';
 
-  let defSize = null;
-  if (defPop >= ENEMY_DEF_THRESHOLDS.heavy) defSize = 'heavy';
-  else if (defPop >= ENEMY_DEF_THRESHOLDS.medium) defSize = 'medium';
-  else if (defPop >= ENEMY_DEF_THRESHOLDS.light) defSize = 'light';
-  else if (defPop > 0) defSize = 'weak';
+  // Itera do maior threshold para o menor (o maior match ganha)
+  let defSize = null, defColor = null;
+  const sorted = [...enemyBunkTypes].sort((a, b) => (b.minDefPop || 0) - (a.minDefPop || 0));
+  for (const bt of sorted) {
+    if (!bt.enabled) continue;
+    if (defPop >= (bt.minDefPop || 0)) {
+      defSize = bt.id;
+      defColor = bt.color;
+      break;
+    }
+  }
 
-  return { offSize, defSize, offPop, defPop };
+  return { offSize, defSize, defColor, offPop, defPop };
 }
 
 function injectShieldStyles() {
@@ -947,9 +959,16 @@ async function initMapOverlay() {
   if (!eosToken) return;
 
   // Carrega definições guardadas
-  const { eosBunkTypes, eosMapEnabled: savedEnabled } = await getStorage('eosBunkTypes', 'eosMapEnabled');
+  const { eosBunkTypes, eosEnemyBunkTypes, eosMapEnabled: savedEnabled,
+          eosShowAllyBunks, eosShowEnemyBunks, eosBunksAnimated } = await getStorage(
+    'eosBunkTypes', 'eosEnemyBunkTypes', 'eosMapEnabled',
+    'eosShowAllyBunks', 'eosShowEnemyBunks', 'eosBunksAnimated');
   if (savedEnabled === false) eosMapEnabled = false;
   if (Array.isArray(eosBunkTypes) && eosBunkTypes.length > 0) bunkTypes = eosBunkTypes;
+  if (Array.isArray(eosEnemyBunkTypes) && eosEnemyBunkTypes.length > 0) enemyBunkTypes = eosEnemyBunkTypes;
+  if (eosShowAllyBunks === false) showAllyBunks = false;
+  if (eosShowEnemyBunks === false) showEnemyBunks = false;
+  if (eosBunksAnimated === false) bunksAnimated = false;
 
   // Observa o popup nativo do TW para injetar dados de tropas
   setupPopupObserver();
@@ -1027,10 +1046,48 @@ function toggleMapSettingsPanel() {
 }
 
 function buildSettingsPanelHTML() {
-  const toggleColor = eosMapEnabled ? '#4caf50' : '#555';
   const toggleBg = eosMapEnabled ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
-
   const unitPng = (u) => chrome.runtime.getURL(`png/unit_${u}.png`);
+
+  function miniToggle(id, active) {
+    const bg = active ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
+    const left = active ? '19px' : '3px';
+    return `<button id="${id}" data-active="${active}" style="width:36px;height:20px;border-radius:10px;border:none;cursor:pointer;background:${bg};position:relative;transition:background .3s">
+      <div style="width:14px;height:14px;border-radius:50%;background:#f4e8d0;position:absolute;top:3px;left:${left};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>
+    </button>`;
+  }
+
+  function bunkCardHTML(bt, i, section) {
+    return `
+      <div style="background:linear-gradient(135deg,#322a22,#28221c);border:1px solid #e8502025;border-left:3px solid ${bt.color};
+        border-radius:6px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="color" value="${bt.color}" data-field="color" data-idx="${i}" data-section="${section}"
+              style="width:24px;height:24px;border:1px solid #e8502030;border-radius:4px;cursor:pointer;background:#1a1a1a;padding:1px">
+            <span style="color:#f0e0c8;font-size:13px;font-weight:700">${bt.name}</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#b09878">
+            <input type="checkbox" ${bt.enabled ? 'checked' : ''} data-field="enabled" data-idx="${i}" data-section="${section}"
+              style="accent-color:#e8a030;cursor:pointer">
+            Ativo
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:3px">
+            <img src="${unitPng('spear')}" style="width:18px;height:18px;opacity:.7">
+            <img src="${unitPng('sword')}" style="width:18px;height:18px;opacity:.7">
+            <img src="${unitPng('heavy')}" style="width:18px;height:18px;opacity:.7">
+          </div>
+          <span style="font-size:12px;color:#c0b090;font-weight:600">Pop Def ≥</span>
+          <input type="number" value="${bt.minDefPop || 0}" data-field="minDefPop" data-idx="${i}" data-section="${section}" min="0" step="1000"
+            style="width:75px;background:#141010;border:1px solid #e8502020;border-radius:4px;color:#f0e0c8;
+            font-size:13px;padding:4px 6px;outline:none;text-align:center;font-weight:700">
+        </div>
+      </div>
+    `;
+  }
+
   let html = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid #e8502030;flex-shrink:0">
       <span style="font-size:13px;font-weight:700;color:#f8c850;letter-spacing:.5px;text-transform:uppercase">Definições do Mapa</span>
@@ -1042,47 +1099,36 @@ function buildSettingsPanelHTML() {
     </div>
 
     <div style="flex:1;overflow-y:auto;padding:14px" class="eos-scroll">
-    <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;font-weight:700">
-      Tipos de Bunk
-    </div>
-  `;
 
-  for (let i = 0; i < bunkTypes.length; i++) {
-    const bt = bunkTypes[i];
-    // Range label
-    const nextMin = i < bunkTypes.length - 1 ? bunkTypes[i + 1].minDefPop : null;
-    const rangeLabel = nextMin ? `${fmtK(bt.minDefPop)} — ${fmtK(nextMin)}` : `${fmtK(bt.minDefPop)}+`;
-
-    html += `
-      <div style="background:linear-gradient(135deg,#322a22,#28221c);border:1px solid #e8502025;border-left:3px solid ${bt.color};
-        border-radius:6px;padding:10px 12px;margin-bottom:8px" data-bunk-idx="${i}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="color" value="${bt.color}" data-field="color" data-idx="${i}"
-              style="width:24px;height:24px;border:1px solid #e8502030;border-radius:4px;cursor:pointer;background:#1a1a1a;padding:1px">
-            <span style="color:#f0e0c8;font-size:13px;font-weight:700">${bt.name}</span>
-          </div>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#b09878">
-            <input type="checkbox" ${bt.enabled ? 'checked' : ''} data-field="enabled" data-idx="${i}"
-              style="accent-color:#e8a030;cursor:pointer">
-            Ativo
-          </label>
+      <!-- Flags gerais -->
+      <div style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px;margin-bottom:6px">
+          <span style="font-size:12px;color:#f0e0c8">Mostrar bunks aliados</span>
+          ${miniToggle('eos-toggle-ally', showAllyBunks)}
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="display:flex;align-items:center;gap:3px">
-            <img src="${unitPng('spear')}" style="width:18px;height:18px;opacity:.7" title="Lanceiros (1 pop)">
-            <img src="${unitPng('sword')}" style="width:18px;height:18px;opacity:.7" title="Espadachins (1 pop)">
-            <img src="${unitPng('heavy')}" style="width:18px;height:18px;opacity:.7" title="Cavalaria Pesada (6 pop)">
-          </div>
-          <span style="font-size:12px;color:#c0b090;font-weight:600">Pop Def ≥</span>
-          <input type="number" value="${bt.minDefPop || 0}" data-field="minDefPop" data-idx="${i}" min="0" step="5000"
-            style="width:75px;background:#141010;border:1px solid #e8502020;border-radius:4px;color:#f0e0c8;
-            font-size:13px;padding:4px 6px;outline:none;text-align:center;font-weight:700">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px;margin-bottom:6px">
+          <span style="font-size:12px;color:#f0e0c8">Mostrar bunks inimigos</span>
+          ${miniToggle('eos-toggle-enemy', showEnemyBunks)}
         </div>
-        <div style="font-size:9px;color:#807060;margin-top:5px">Intervalo: ${rangeLabel} pop defensiva</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
+          <span style="font-size:12px;color:#f0e0c8">Bunks animados</span>
+          ${miniToggle('eos-toggle-anim', bunksAnimated)}
+        </div>
       </div>
-    `;
-  }
+
+      <!-- Aliados -->
+      <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
+        Bunks Aliados
+      </div>
+  `;
+  for (let i = 0; i < bunkTypes.length; i++) html += bunkCardHTML(bunkTypes[i], i, 'ally');
+
+  html += `
+      <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin:14px 0 8px;font-weight:700">
+        Bunks Inimigos
+      </div>
+  `;
+  for (let i = 0; i < enemyBunkTypes.length; i++) html += bunkCardHTML(enemyBunkTypes[i], i, 'enemy');
 
   html += `
     </div>
@@ -1100,39 +1146,58 @@ function buildSettingsPanelHTML() {
 }
 
 function attachSettingsEvents(panel) {
-  // Toggle EOS
+  // Toggle EOS map
   panel.querySelector('#eos-map-toggle')?.addEventListener('click', () => {
     eosMapEnabled = !eosMapEnabled;
     toggleMapSettingsPanel();
-    toggleMapSettingsPanel(); // Re-render
+    toggleMapSettingsPanel();
     if (!eosMapEnabled) {
-      document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+      document.querySelectorAll('[data-eos-shield],[data-eos-enemy]').forEach(el => el.remove());
       shieldElements = {};
-    } else {
-      placeShields();
-    }
+    } else placeShields();
   });
 
-  // Color/name/enabled/minDefPop changes
-  panel.querySelectorAll('[data-idx]').forEach(input => {
+  // Toggles show/hide ally/enemy/anim
+  function bindMiniToggle(id, getter, setter) {
+    panel.querySelector('#' + id)?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      const newVal = !getter();
+      setter(newVal);
+      btn.setAttribute('data-active', String(newVal));
+      btn.style.background = newVal ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
+      btn.querySelector('div').style.left = newVal ? '19px' : '3px';
+    });
+  }
+  bindMiniToggle('eos-toggle-ally',  () => showAllyBunks,  v => showAllyBunks = v);
+  bindMiniToggle('eos-toggle-enemy', () => showEnemyBunks, v => showEnemyBunks = v);
+  bindMiniToggle('eos-toggle-anim',  () => bunksAnimated, v => bunksAnimated = v);
+
+  // Campos dos bunk cards (ally e enemy)
+  panel.querySelectorAll('[data-section]').forEach(input => {
     const idx = parseInt(input.dataset.idx);
-    if (input.dataset.field === 'color') {
-      input.addEventListener('input', () => { bunkTypes[idx].color = input.value; });
-    } else if (input.dataset.field === 'name') {
-      input.addEventListener('input', () => { bunkTypes[idx].name = input.value; });
-    } else if (input.dataset.field === 'enabled') {
-      input.addEventListener('change', () => { bunkTypes[idx].enabled = input.checked; });
-    } else if (input.dataset.field === 'minDefPop') {
-      input.addEventListener('change', () => { bunkTypes[idx].minDefPop = parseInt(input.value) || 0; });
-    }
+    const section = input.dataset.section;
+    const arr = section === 'ally' ? bunkTypes : enemyBunkTypes;
+    const field = input.dataset.field;
+    const evt = (field === 'enabled') ? 'change' : 'input';
+    input.addEventListener(evt, () => {
+      if (field === 'enabled') arr[idx].enabled = input.checked;
+      else if (field === 'minDefPop') arr[idx].minDefPop = parseInt(input.value) || 0;
+      else arr[idx][field] = input.value;
+    });
   });
-
 
   // Save
   panel.querySelector('#eos-save-map-settings')?.addEventListener('click', async () => {
-    await chrome.storage.local.set({ eosBunkTypes: bunkTypes, eosMapEnabled });
-    // Recria escudos com novas definições
-    document.querySelectorAll('[data-eos-shield]').forEach(el => el.remove());
+    await chrome.storage.local.set({
+      eosBunkTypes: bunkTypes,
+      eosEnemyBunkTypes: enemyBunkTypes,
+      eosMapEnabled,
+      eosShowAllyBunks: showAllyBunks,
+      eosShowEnemyBunks: showEnemyBunks,
+      eosBunksAnimated: bunksAnimated,
+    });
+    // Re-render: remove escudos e inimigos antigos e recria com novas definições
+    document.querySelectorAll('[data-eos-shield],[data-eos-enemy]').forEach(el => el.remove());
     shieldElements = {};
     if (eosMapEnabled) placeShields();
     document.getElementById('eos-map-settings-overlay')?.remove();
@@ -1211,12 +1276,12 @@ function placeShields() {
   let villageIds;
   try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
 
-  const DEF_BG = { weak:'#ffffff', light:'#4caf50', medium:'#ff9800', heavy:'#f44336' };
   const SWORD_IMG = chrome.runtime.getURL('png/unit_sword.png');
   const VILLAGE_W = 53;
   const ICON_SIZE = 14;
+  const animClass = bunksAnimated ? 'eos-shield-icon' : '';
 
-  // Itera as aldeias visíveis no mapa (muito mais barato que iterar mapVillageData todo)
+  // Itera as aldeias visíveis no mapa
   for (const coordKey of Object.keys(villageIds)) {
     const vid = villageIds[coordKey];
     if (!vid) continue;
@@ -1232,7 +1297,7 @@ function placeShields() {
     const left = parseInt(domVillage.style.left, 10) || 0;
 
     // ── Escudo de tribo (aldeia aliada com tropas classificadas como bunk) ──
-    if (!alreadyShield && hasTribe) {
+    if (!alreadyShield && hasTribe && showAllyBunks) {
       const v = mapVillageData.get(coordKey);
       if (v) {
         const troops = v.troops_total || v.troops_own;
@@ -1242,7 +1307,7 @@ function placeShields() {
             const shield = makeShieldElement(bt.color);
             shield.dataset.eosShield = coordKey;
             shield.title = bt.name + ' (' + coordKey + ')';
-            shield.className = 'eos-shield-icon';
+            shield.className = animClass;
             const delay = (Math.random() * 2).toFixed(1);
             shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 20}px;top:${top - 5}px;animation-delay:${delay}s`;
             parent.insertBefore(shield, domVillage);
@@ -1252,20 +1317,20 @@ function placeShields() {
     }
 
     // ── Ícone defensivo inimigo (bunk) ──
-    // Skip se esta aldeia já está na tribo (é nossa) — prioridade ao shield
-    if (!alreadyEnemy && hasEnemy && !(hasTribe && mapVillageData.get(coordKey))) {
+    if (!alreadyEnemy && hasEnemy && showEnemyBunks && !(hasTribe && mapVillageData.get(coordKey))) {
       const report = enemyReportsData.get(coordKey);
       if (report) {
-        // Considera tropas na aldeia OU tropas pertencentes (o que tiver mais info)
         const c1 = classifyEnemyTroops(report.troops);
         const c2 = classifyEnemyTroops(report.troops_outside);
-        const defSize = (c1.defPop >= c2.defPop) ? c1.defSize : c2.defSize;
-        if (defSize) {
+        const best = (c1.defPop >= c2.defPop) ? c1 : c2;
+        if (best.defSize && best.defColor) {
           const centerX = left + VILLAGE_W / 2;
           const defIcon = document.createElement('div');
           defIcon.dataset.eosEnemy = coordKey;
-          defIcon.title = `Bunk ${defSize} (${coordKey})`;
-          defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${centerX - ICON_SIZE / 2}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${DEF_BG[defSize]};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${DEF_BG[defSize]}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center`;
+          defIcon.title = `Inimigo: ${best.defSize} (${coordKey})`;
+          defIcon.className = animClass;
+          const delay = (Math.random() * 2).toFixed(1);
+          defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${centerX - ICON_SIZE / 2}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${best.defColor};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${best.defColor}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s`;
           const sword = document.createElement('img');
           sword.src = SWORD_IMG;
           sword.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
