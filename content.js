@@ -1643,31 +1643,32 @@ function readUnitsTable(table) {
   if (!quantRow) return null;
 
   function readRowValues(row, unitRowRef) {
-    // Estratégia: usa a posição absoluta de cada célula no row para alinhar com a row de valores
-    // Isto evita problemas com rows que têm células de label extras
-    const unitCells = Array.from(unitRowRef.children); // só os direct td/th
-    const valCells  = Array.from(row.children);
+    // Lista ordenada de unidades que aparecem em imgs na unit row
+    const unitImgs = Array.from(unitRowRef.querySelectorAll('img[src*="unit_"]'));
+    const units = unitImgs.map(img => {
+      const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
+      return m ? m[1] : null;
+    });
 
-    // Conta quantas cells de label existem em cada row (células sem img mas antes da primeira img)
-    // Encontra o índice da primeira célula com img unit_
-    let firstUnitIdx = unitCells.findIndex(c => c.querySelector('img[src*="unit_"]'));
-    if (firstUnitIdx < 0) return {};
-
-    // Na value row, conta cells de texto/label antes dos números
-    // Label count = diff entre número total de cells e número de cells com img na unitRow (após offset)
-    const unitImgCells = unitCells.slice(firstUnitIdx).filter(c => c.querySelector('img[src*="unit_"]'));
-    // valCells deve ter N cells numéricas (N = unitImgCells.length) mais label cells
-    const labelCountInValRow = Math.max(0, valCells.length - unitImgCells.length);
+    // Lista de cells da value row, filtrando cells de LABEL (não numéricas)
+    // Uma cell é "numérica" se o seu textContent trimmed contém dígitos ou é apenas "-"/"0"
+    const valCells = Array.from(row.children);
+    const numericCells = valCells.filter(td => {
+      const t = (td.textContent || '').trim();
+      if (!t) return false;
+      // Label tipicamente termina com ":" (ex: "Quantidade:", "Baixas:")
+      if (/:$/.test(t)) return false;
+      // Label com palavras (mais de 3 chars não-dígitos)
+      if (/^[a-záàéêíóôõúç\s]{4,}$/i.test(t)) return false;
+      return /[\d\-]/.test(t);
+    });
 
     const result = {};
-    unitImgCells.forEach((unitCell, i) => {
-      const img = unitCell.querySelector('img[src*="unit_"]');
-      const m = (img.getAttribute('src') || '').match(/unit_(\w+)\.(?:png|webp|gif)/);
-      const unit = m ? m[1] : null;
+    units.forEach((unit, i) => {
       if (!unit) return;
-      const valCell = valCells[labelCountInValRow + i];
-      if (!valCell) return;
-      const n = parseInt((valCell.textContent || '').replace(/\D/g, '')) || 0;
+      const cell = numericCells[i];
+      if (!cell) return;
+      const n = parseInt((cell.textContent || '').replace(/\D/g, '')) || 0;
       result[unit] = n;
     });
     return result;
