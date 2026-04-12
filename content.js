@@ -1172,7 +1172,7 @@ async function fetchEnemyReports(token) {
       if (r.village_coords) enemyReportsData.set(r.village_coords, r);
     }
     console.log('[EOS] enemy reports carregados:', enemyReportsData.size);
-    if (typeof placeEnemyIcons === 'function') placeEnemyIcons();
+    placeShields();
   } catch (e) {
     console.warn('[EOS] fetchEnemyReports erro:', e);
   }
@@ -1197,57 +1197,12 @@ function getMapCenter() {
   return null;
 }
 
+// Passagem única: coloca escudos aliados E ícones inimigos num só loop sobre as aldeias visíveis.
 function placeShields() {
-  if (!mapVillageData || mapVillageData.size === 0 || !eosMapEnabled) return;
-
-  const mapEl = document.getElementById('map');
-  if (!mapEl) return;
-
-  // Classifica aldeias por bunk type (usa troops_total ou troops_own como fallback)
-  const bunkeredMap = new Map();
-  for (const [coords, v] of mapVillageData) {
-    const troops = v.troops_total || v.troops_own;
-    if (!troops) continue;
-    const bt = classifyVillageForMap(troops);
-    if (bt) bunkeredMap.set(coords, bt);
-  }
-  if (bunkeredMap.size === 0) return;
-
-  // Lê mapeamento coord→id do page_reader
-  const villageMapStr = mapEl.getAttribute('data-eos-villages');
-  if (!villageMapStr) return;
-  let villageIds;
-  try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
-
-  // coord → TWMap.villages[id] → #map_village_${id} → posiciona escudo
-  for (const [coordKey, bt] of bunkeredMap) {
-    const vid = villageIds[coordKey];
-    if (!vid) continue;
-
-    const domVillage = document.getElementById('map_village_' + vid);
-    if (!domVillage) continue;
-
-    // Skip se já tem escudo neste sector para esta coordenada
-    if (domVillage.parentNode.querySelector(`[data-eos-shield="${coordKey}"]`)) continue;
-
-    const top = parseInt(domVillage.style.top, 10) || 0;
-    const left = parseInt(domVillage.style.left, 10) || 0;
-
-    const shield = makeShieldElement(bt.color);
-    shield.dataset.eosShield = coordKey;
-    shield.title = bt.name + ' (' + coordKey + ')';
-    shield.className = 'eos-shield-icon';
-    const delay = (Math.random() * 2).toFixed(1);
-    shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 20}px;top:${top - 5}px;animation-delay:${delay}s`;
-    domVillage.parentNode.insertBefore(shield, domVillage);
-  }
-}
-
-// Coloca ícones em aldeias inimigas com base nas tropas pertencentes (troops_outside)
-// - attack_large/medium/small.png para força ofensiva
-// - unit_sword.png com fundo colorido para bunk defensivo
-function placeEnemyIcons() {
-  if (!enemyReportsData || enemyReportsData.size === 0 || !eosMapEnabled) return;
+  if (!eosMapEnabled) return;
+  const hasTribe = mapVillageData && mapVillageData.size > 0;
+  const hasEnemy = enemyReportsData && enemyReportsData.size > 0;
+  if (!hasTribe && !hasEnemy) return;
 
   const mapEl = document.getElementById('map');
   if (!mapEl) return;
@@ -1258,60 +1213,84 @@ function placeEnemyIcons() {
   try { villageIds = JSON.parse(villageMapStr); } catch (_) { return; }
 
   const OFF_IMG = {
-    full:   chrome.runtime.getURL('png/attack_large.png'),
-    semi:   chrome.runtime.getURL('png/attack_medium.png'),
-    small:  chrome.runtime.getURL('png/attack_small.png'),
+    full:  chrome.runtime.getURL('png/attack_large.png'),
+    semi:  chrome.runtime.getURL('png/attack_medium.png'),
+    small: chrome.runtime.getURL('png/attack_small.png'),
   };
-  const DEF_BG = {
-    light:  '#4caf50',
-    medium: '#ff9800',
-    heavy:  '#f44336',
-  };
+  const DEF_BG = { light:'#4caf50', medium:'#ff9800', heavy:'#f44336' };
   const SWORD_IMG = chrome.runtime.getURL('png/unit_sword.png');
+  const VILLAGE_W = 53;
+  const ICON_SIZE = 14;
 
-  for (const [coordKey, report] of enemyReportsData) {
+  // Itera as aldeias visíveis no mapa (muito mais barato que iterar mapVillageData todo)
+  for (const coordKey of Object.keys(villageIds)) {
     const vid = villageIds[coordKey];
     if (!vid) continue;
     const domVillage = document.getElementById('map_village_' + vid);
     if (!domVillage) continue;
 
-    // Skip se já colocámos os ícones
-    if (domVillage.parentNode.querySelector(`[data-eos-enemy="${coordKey}"]`)) continue;
-
-    const { offSize, defSize } = classifyEnemyTroops(report.troops_outside);
-    if (!offSize && !defSize) continue;
+    const parent = domVillage.parentNode;
+    const alreadyShield = parent.querySelector(`[data-eos-shield="${coordKey}"]`);
+    const alreadyEnemy  = parent.querySelector(`[data-eos-enemy="${coordKey}"]`);
+    if (alreadyShield && alreadyEnemy) continue;
 
     const top = parseInt(domVillage.style.top, 10) || 0;
     const left = parseInt(domVillage.style.left, 10) || 0;
 
-    // Ícone ofensivo (canto superior esquerdo)
-    if (offSize) {
-      const offIcon = document.createElement('img');
-      offIcon.src = OFF_IMG[offSize];
-      offIcon.dataset.eosEnemy = coordKey;
-      offIcon.title = `Ofensiva ${offSize} (${coordKey})`;
-      offIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${left - 10}px;top:${top - 8}px;width:20px;height:20px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))`;
-      domVillage.parentNode.insertBefore(offIcon, domVillage);
+    // ── Escudo de tribo (aldeia aliada com tropas classificadas como bunk) ──
+    if (!alreadyShield && hasTribe) {
+      const v = mapVillageData.get(coordKey);
+      if (v) {
+        const troops = v.troops_total || v.troops_own;
+        if (troops) {
+          const bt = classifyVillageForMap(troops);
+          if (bt) {
+            const shield = makeShieldElement(bt.color);
+            shield.dataset.eosShield = coordKey;
+            shield.title = bt.name + ' (' + coordKey + ')';
+            shield.className = 'eos-shield-icon';
+            const delay = (Math.random() * 2).toFixed(1);
+            shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 20}px;top:${top - 5}px;animation-delay:${delay}s`;
+            parent.insertBefore(shield, domVillage);
+          }
+        }
+      }
     }
 
-    // Ícone defensivo (canto superior direito)
-    if (defSize) {
-      const defIcon = document.createElement('div');
-      defIcon.dataset.eosEnemy = coordKey;
-      defIcon.title = `Bunk ${defSize} (${coordKey})`;
-      defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${left + 22}px;top:${top - 8}px;width:18px;height:18px;border-radius:50%;background:${DEF_BG[defSize]};border:1.5px solid rgba(255,255,255,.7);box-shadow:0 0 4px ${DEF_BG[defSize]}aa,0 1px 3px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center`;
-      const sword = document.createElement('img');
-      sword.src = SWORD_IMG;
-      sword.style.cssText = 'width:12px;height:12px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
-      defIcon.appendChild(sword);
-      domVillage.parentNode.insertBefore(defIcon, domVillage);
+    // ── Ícones inimigos (ofensivo + defensivo) ──
+    // Skip se esta aldeia já está na tribo (é nossa) — prioridade ao shield
+    if (!alreadyEnemy && hasEnemy && !(hasTribe && mapVillageData.get(coordKey))) {
+      const report = enemyReportsData.get(coordKey);
+      if (report) {
+        const { offSize, defSize } = classifyEnemyTroops(report.troops_outside);
+        if (offSize || defSize) {
+          const both = offSize && defSize;
+          const centerX = left + VILLAGE_W / 2;
+          if (offSize) {
+            const offIcon = document.createElement('img');
+            offIcon.src = OFF_IMG[offSize];
+            offIcon.dataset.eosEnemy = coordKey;
+            offIcon.title = `Ofensiva ${offSize} (${coordKey})`;
+            const iconX = both ? (centerX - ICON_SIZE - 1) : (centerX - ICON_SIZE / 2);
+            offIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${iconX}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))`;
+            parent.insertBefore(offIcon, domVillage);
+          }
+          if (defSize) {
+            const defIcon = document.createElement('div');
+            defIcon.dataset.eosEnemy = coordKey;
+            defIcon.title = `Bunk ${defSize} (${coordKey})`;
+            const iconX = both ? (centerX + 1) : (centerX - ICON_SIZE / 2);
+            defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${iconX}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${DEF_BG[defSize]};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${DEF_BG[defSize]}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center`;
+            const sword = document.createElement('img');
+            sword.src = SWORD_IMG;
+            sword.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
+            defIcon.appendChild(sword);
+            parent.insertBefore(defIcon, domVillage);
+          }
+        }
+      }
     }
   }
-}
-
-function placeAllMapIcons() {
-  placeShields();
-  placeEnemyIcons();
 }
 
 function startShieldTracking() {
@@ -1319,20 +1298,24 @@ function startShieldTracking() {
   if (!mapEl) return;
 
   // Primeiro render
-  placeAllMapIcons();
+  placeShields();
 
-  // Observer: quando o TW adiciona/remove sectors (pan), adiciona escudos nos novos
-  // Observa map_container onde os sectors são efetivamente trocados
+  // Observer: quando o TW adiciona/remove sectors (pan), recoloca escudos/ícones
+  // Observa map_container mas só childList (não subtree) — muito mais leve
   const container = document.getElementById('map_container') || mapEl;
   let debounce = null;
+  let lastRun = 0;
   const obs = new MutationObserver(() => {
     if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(placeAllMapIcons, 250);
+    // Debounce longo mas com force-run se já passou muito tempo
+    const since = Date.now() - lastRun;
+    const wait = since > 2000 ? 100 : 500;
+    debounce = setTimeout(() => { lastRun = Date.now(); placeShields(); }, wait);
   });
   obs.observe(container, { childList: true, subtree: true });
 
-  // Fallback periódico (intervalo grande, só para edge cases)
-  setInterval(placeAllMapIcons, 30000);
+  // Fallback periódico
+  setInterval(placeShields, 30000);
 }
 
 function setupPopupObserver() {
