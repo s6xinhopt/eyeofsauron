@@ -1025,10 +1025,10 @@ function toggleMapSettingsPanel() {
   const existing = document.getElementById('eos-map-settings-overlay');
   if (existing) { existing.remove(); return; }
 
-  // Backdrop escuro
+  // Backdrop transparente (não escurece o jogo)
   const overlay = document.createElement('div');
   overlay.id = 'eos-map-settings-overlay';
-  overlay.style.cssText = `position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);
+  overlay.style.cssText = `position:fixed;inset:0;z-index:2147483646;background:transparent;
     display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif`;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
