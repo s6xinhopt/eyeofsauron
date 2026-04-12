@@ -1313,10 +1313,13 @@ function setupPopupObserver() {
 
     let troopHtml = '';
     if (hasInVillage) {
-      troopHtml += renderTroopsTable(t || {}, hasOutside ? 'Na aldeia' : null);
+      // Para relatórios de ataques nossos: "Tropas na aldeia" (inclui apoios)
+      // Para relatórios de tribo: sem label (é óbvio)
+      troopHtml += renderTroopsTable(t || {}, isEnemy ? 'Tropas na aldeia' : null);
     }
     if (hasOutside) {
-      troopHtml += renderTroopsTable(enemyReport.troops_outside, 'Fora da aldeia');
+      // "Pertencentes à aldeia" = as que vimos fora da aldeia (seguramente dele)
+      troopHtml += renderTroopsTable(enemyReport.troops_outside, 'Tropas pertencentes à aldeia');
     }
 
     // Info do jogador e atualização
@@ -1674,15 +1677,65 @@ function parseReport() {
     if (Object.keys(troopsOutside).length === 0) troopsOutside = null;
   }
 
-  // Data do relatório
+  // Data do relatório — prioridade:
+  // 1. "Tempo de batalha" explícito (procura <th>/<td> com esse texto)
+  // 2. Atributo data-timestamp em qualquer elemento do relatório
+  // 3. Fallback: qualquer data-hora no content_value
   let reportDate = null;
-  const allText = document.querySelector('#content_value')?.textContent || '';
-  const dateMatch = allText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:[àas\s]*)?\s*(\d{1,2}):(\d{2})/);
-  if (dateMatch) {
-    const [, day, month, year, hh, mm] = dateMatch;
-    // Assumir timezone local
-    reportDate = new Date(+year, +month - 1, +day, +hh, +mm).toISOString();
-  } else {
+
+  function parseDateStr(str) {
+    if (!str) return null;
+    // Formatos: "dd/mm/yyyy HH:MM" ou "dd/mm HH:MM" (ano atual)
+    let m = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
+    if (m) {
+      const [, d, mo, y, hh, mm] = m;
+      return new Date(+y, +mo - 1, +d, +hh, +mm).toISOString();
+    }
+    m = str.match(/(\d{1,2})\/(\d{1,2})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
+    if (m) {
+      const [, d, mo, hh, mm] = m;
+      const now = new Date();
+      let year = now.getFullYear();
+      // Se a data parece futura, é do ano passado
+      const parsed = new Date(year, +mo - 1, +d, +hh, +mm);
+      if (parsed > now) parsed.setFullYear(year - 1);
+      return parsed.toISOString();
+    }
+    return null;
+  }
+
+  // 1. Procura "Tempo de batalha" no header do relatório
+  const headerTable = document.querySelector('#content_value table');
+  if (headerTable) {
+    const ths = headerTable.querySelectorAll('th');
+    for (const th of ths) {
+      if (/tempo\s+de\s+batalha/i.test(th.textContent || '')) {
+        const td = th.nextElementSibling;
+        if (td) {
+          reportDate = parseDateStr(td.textContent || '');
+          if (reportDate) break;
+        }
+      }
+    }
+  }
+
+  // 2. Fallback: procura data-timestamp
+  if (!reportDate) {
+    const tsEl = document.querySelector('[data-timestamp]');
+    if (tsEl) {
+      const ts = parseInt(tsEl.getAttribute('data-timestamp'));
+      if (ts > 0) reportDate = new Date(ts * 1000).toISOString();
+    }
+  }
+
+  // 3. Fallback: qualquer data-hora no texto
+  if (!reportDate) {
+    const allText = document.querySelector('#content_value')?.textContent || '';
+    reportDate = parseDateStr(allText);
+  }
+
+  if (!reportDate) {
+    console.warn('[EOS report] Não encontrou data do relatório, a usar "agora"');
     reportDate = new Date().toISOString();
   }
 
