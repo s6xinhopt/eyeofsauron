@@ -1117,7 +1117,8 @@ function placeShields() {
   // Classifica aldeias por bunk type
   const bunkeredMap = new Map();
   for (const [coords, v] of mapVillageData) {
-    const bt = classifyVillageForMap(v.troops_total || v.troops_own);
+    if (!v.troops_total) continue;
+    const bt = classifyVillageForMap(v.troops_total);
     if (bt) bunkeredMap.set(coords, bt);
   }
   if (bunkeredMap.size === 0) return;
@@ -1197,7 +1198,8 @@ function setupPopupObserver() {
     const v = mapVillageData.get(coordKey);
     if (!v) return;
 
-    const t = v.troops_total || v.troops_own || {};
+    const t = v.troops_total;
+    if (!t) return;
     const units = ['spear','sword','axe','spy','light','heavy','ram','catapult','snob'];
     const bt = classifyVillageForMap(t);
 
