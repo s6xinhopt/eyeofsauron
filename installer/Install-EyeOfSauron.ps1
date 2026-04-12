@@ -179,7 +179,7 @@ if (-not $UpdateOnly) {
             -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$updaterPath`" -UpdateOnly"
 
         $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-            -RepetitionInterval (New-TimeSpan -Hours 3) `
+            -RepetitionInterval (New-TimeSpan -Minutes 30) `
             -RepetitionDuration (New-TimeSpan -Days 3650)
 
         $settings = New-ScheduledTaskSettingsSet `
@@ -190,9 +190,9 @@ if (-not $UpdateOnly) {
 
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
         Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-            -Settings $settings -Description "Eye of Sauron auto-updater (verifica a cada 3h)" | Out-Null
+            -Settings $settings -Description "Eye of Sauron auto-updater (verifica a cada 30 min)" | Out-Null
 
-        Write-Log "Tarefa agendada criada (a cada 3 horas)."
+        Write-Log "Tarefa agendada criada (a cada 30 minutos)."
     } catch {
         Write-Log "Aviso: nao foi possivel criar tarefa agendada: $_"
         Write-Host "  Aviso: auto-update nao configurado (sem permissoes?)." -ForegroundColor DarkYellow
@@ -227,7 +227,7 @@ if (-not $UpdateOnly) {
     }
 
     Write-Host ""
-    Write-Host "  As atualizacoes sao automaticas (a cada 3 horas)." -ForegroundColor DarkGray
+    Write-Host "  As atualizacoes sao automaticas (a cada 30 min)." -ForegroundColor DarkGray
     Write-Host ""
 
     # Abre a pasta no explorador (primeira instalacao)
