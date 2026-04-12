@@ -82,16 +82,12 @@
       } catch (e) {}
     }, 500);
 
-    // Escreve mapeamento coord→id das aldeias visíveis (só quando muda)
-    var lastVillageHash = '';
+    // Escreve mapeamento coord→id das aldeias visíveis
+    var lastJson = '';
     setInterval(function() {
       try {
         var villages = window.TWMap.villages;
         if (!villages) return;
-        var keys = Object.keys(villages);
-        var hash = keys.length + '_' + (keys[0] || '') + '_' + (keys[keys.length-1] || '');
-        if (hash === lastVillageHash) return;
-        lastVillageHash = hash;
         var map = {};
         for (var key in villages) {
           var v = villages[key];
@@ -101,9 +97,12 @@
             map[x + '|' + y] = v.id;
           }
         }
-        mapEl.setAttribute('data-eos-villages', JSON.stringify(map));
+        var json = JSON.stringify(map);
+        if (json === lastJson) return;
+        lastJson = json;
+        mapEl.setAttribute('data-eos-villages', json);
       } catch (e) {}
-    }, 3000);
+    }, 2000);
   }
 
   tryStart();
