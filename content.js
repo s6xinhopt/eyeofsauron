@@ -114,6 +114,205 @@ function eosSelAll(key, root) {
   return Array.from((root || document).querySelectorAll(s));
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// RECIPE EXECUTOR
+// Interpreta recipes JSON enviadas do servidor para extrair dados do DOM.
+// Formato documentado em eos-server/RECIPES.md
+// ═════════════════════════════════════════════════════════════════════════════
+
+const RECIPE_BUILTIN_FNS = {};  // funções complexas que permanecem em código
+
+function registerRecipeFn(name, fn) { RECIPE_BUILTIN_FNS[name] = fn; }
+
+function runRecipe(recipe, initialVars) {
+  const vars = { ...(initialVars || {}) };
+  const ctx = { vars, returned: null, hasReturned: false };
+  try {
+    if (Array.isArray(recipe?.steps)) runRecipeSteps(recipe.steps, ctx);
+  } catch (e) {
+    console.error('[EOS recipe]', recipe?.name || '?', 'erro:', e);
+  }
+  return ctx.hasReturned ? ctx.returned : null;
+}
+
+function runRecipeSteps(steps, ctx) {
+  for (const step of steps) {
+    if (ctx.hasReturned) return;
+    runRecipeStep(step, ctx);
+  }
+}
+
+function resolveValue(val, vars) {
+  if (val == null) return val;
+  if (typeof val === 'string') {
+    if (val.startsWith('$')) {
+      const path = val.slice(1).split('.');
+      let v = vars[path[0]];
+      for (let i = 1; i < path.length && v != null; i++) v = v[path[i]];
+      return v;
+    }
+    return val;
+  }
+  if (Array.isArray(val)) return val.map(x => resolveValue(x, vars));
+  if (typeof val === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(val)) out[k] = resolveValue(v, vars);
+    return out;
+  }
+  return val;
+}
+
+function evalCondition(cond, vars) {
+  if (!cond) return false;
+  if (cond.has !== undefined) {
+    const v = resolveValue(cond.has, vars);
+    return v != null && !(Array.isArray(v) && v.length === 0);
+  }
+  if (cond.missing !== undefined) {
+    const v = resolveValue(cond.missing, vars);
+    return v == null;
+  }
+  if (cond.equals) {
+    return resolveValue(cond.equals.a, vars) === resolveValue(cond.equals.b, vars);
+  }
+  if (cond.matches) {
+    const v = String(resolveValue(cond.matches.value, vars) || '');
+    try { return new RegExp(cond.matches.regex, cond.matches.flags || '').test(v); }
+    catch { return false; }
+  }
+  if (cond.and) return cond.and.every(c => evalCondition(c, vars));
+  if (cond.or)  return cond.or.some(c => evalCondition(c, vars));
+  if (cond.not) return !evalCondition(cond.not, vars);
+  return false;
+}
+
+// Resolve string de selector (suporta múltiplos por vírgula, tenta em ordem)
+function queryFirst(selector, root) {
+  const parts = String(selector).split(',').map(s => s.trim()).filter(Boolean);
+  const r = root || document;
+  for (const p of parts) {
+    try { const el = r.querySelector(p); if (el) return el; } catch {}
+  }
+  return null;
+}
+
+function runRecipeStep(step, ctx) {
+  const { vars } = ctx;
+
+  switch (step.op) {
+    case 'select': {
+      const root = step.from ? resolveValue(step.from, vars) : document;
+      if (root) vars[step.as] = queryFirst(step.selector, root);
+      else vars[step.as] = null;
+      return;
+    }
+
+    case 'selectAll': {
+      const root = step.from ? resolveValue(step.from, vars) : document;
+      if (!root) { vars[step.as] = []; return; }
+      const parts = String(step.selector).split(',').map(s => s.trim()).filter(Boolean);
+      // selectAll: junta resultados de todos os selectors
+      const seen = new Set();
+      const out = [];
+      for (const p of parts) {
+        try {
+          for (const el of root.querySelectorAll(p)) {
+            if (!seen.has(el)) { seen.add(el); out.push(el); }
+          }
+        } catch {}
+      }
+      vars[step.as] = out;
+      return;
+    }
+
+    case 'set': {
+      vars[step.as] = resolveValue(step.value, vars);
+      return;
+    }
+
+    case 'extractText': {
+      const el = resolveValue(step.from, vars);
+      const text = el ? (el.textContent || '') : '';
+      if (step.regex) {
+        try {
+          const m = text.match(new RegExp(step.regex, step.flags || ''));
+          vars[step.as] = m ? (step.group != null ? m[step.group] : m[0]) : null;
+        } catch { vars[step.as] = null; }
+      } else {
+        vars[step.as] = text.trim();
+      }
+      return;
+    }
+
+    case 'extractAttr': {
+      const el = resolveValue(step.from, vars);
+      const attr = el ? (el.getAttribute(step.attr) || '') : '';
+      if (step.regex) {
+        try {
+          const m = attr.match(new RegExp(step.regex, step.flags || ''));
+          vars[step.as] = m ? (step.group != null ? m[step.group] : m[0]) : null;
+        } catch { vars[step.as] = null; }
+      } else {
+        vars[step.as] = attr;
+      }
+      return;
+    }
+
+    case 'if': {
+      if (evalCondition(step.cond, vars)) {
+        if (step.then) runRecipeSteps(step.then, ctx);
+      } else if (step.else) {
+        runRecipeSteps(step.else, ctx);
+      }
+      return;
+    }
+
+    case 'forEach': {
+      const arr = resolveValue(step.in, vars) || [];
+      for (const item of arr) {
+        vars[step.as] = item;
+        if (step.do) runRecipeSteps(step.do, ctx);
+        if (ctx.hasReturned) return;
+      }
+      return;
+    }
+
+    case 'append': {
+      const arr = resolveValue(step.to, vars);
+      if (Array.isArray(arr)) arr.push(resolveValue(step.value, vars));
+      return;
+    }
+
+    case 'setKey': {
+      const obj = resolveValue(step.on, vars);
+      if (obj && typeof obj === 'object') obj[step.key] = resolveValue(step.value, vars);
+      return;
+    }
+
+    case 'call': {
+      const fn = RECIPE_BUILTIN_FNS[step.fn];
+      if (typeof fn === 'function') {
+        const args = (step.args || []).map(a => resolveValue(a, vars));
+        try { vars[step.as] = fn.apply(null, args); }
+        catch (e) { console.error('[EOS recipe] call', step.fn, 'falhou:', e); vars[step.as] = null; }
+      } else {
+        console.warn('[EOS recipe] função não registada:', step.fn);
+        vars[step.as] = null;
+      }
+      return;
+    }
+
+    case 'return': {
+      ctx.returned = resolveValue(step.value, vars);
+      ctx.hasReturned = true;
+      return;
+    }
+
+    default:
+      console.warn('[EOS recipe] operação desconhecida:', step.op);
+  }
+}
+
 // Carrega config imediatamente
 loadCachedConfig();
 
@@ -379,28 +578,33 @@ function waitForTable() {
 // ── Extração de grupos do jogo ───────────────────────────────────────────────
 
 function extractTWGroups() {
-  const seen = new Set(); const groups = [];
-  function add(id, name) {
-    const sid = String(id);
-    if (!sid || sid === '0' || seen.has(sid)) return;
-    const n = (name||'').trim(); if (!n) return;
-    seen.add(sid); groups.push({ id: sid, name: n });
+  // Se há recipe, usa-o (Phase 2). Senão cai no código JS legado.
+  const recipe = EOS_CONFIG.recipes?.extractTWGroups;
+  let raw;
+  if (recipe) {
+    raw = runRecipe(recipe) || [];
+  } else {
+    raw = [];
+    const sel = document.querySelector('select#group_id, select[name="group_id"]');
+    if (sel) Array.from(sel.options).filter(o => o.value && o.value!=='0').forEach(o => raw.push({ id: o.value, name: o.text }));
+    document.querySelectorAll('span.group-menu-item').forEach(span => {
+      const m = (span.getAttribute('onclick')||'').match(/\b(\d+)\b/);
+      if (m) raw.push({ id: m[1], name: span.textContent });
+    });
+    document.querySelectorAll('a[href*="group="]').forEach(a => {
+      const m = (a.getAttribute('href')||'').match(/[?&]group=(\d+)/);
+      const name = a.textContent.trim();
+      if (m && name.length > 2) raw.push({ id: m[1], name });
+    });
   }
 
-  const sel = document.querySelector('select#group_id, select[name="group_id"]');
-  if (sel) Array.from(sel.options).filter(o => o.value && o.value!=='0').forEach(o => add(o.value, o.text));
-
-  document.querySelectorAll('span.group-menu-item').forEach(span => {
-    const m = (span.getAttribute('onclick')||'').match(/\b(\d+)\b/);
-    if (m) add(m[1], span.textContent);
-  });
-
-  document.querySelectorAll('a[href*="group="]').forEach(a => {
-    const m = (a.getAttribute('href')||'').match(/[?&]group=(\d+)/);
-    const name = a.textContent.trim();
-    if (m && name.length > 2) add(m[1], name);
-  });
-
+  // Dedup e validação (fica em código — mais simples que fazer no recipe)
+  const seen = new Set(); const groups = [];
+  for (const g of raw) {
+    const sid = String(g.id || ''); const n = (g.name || '').trim();
+    if (!sid || sid === '0' || seen.has(sid) || !n) continue;
+    seen.add(sid); groups.push({ id: sid, name: n });
+  }
   return groups.length ? groups : null;
 }
 
@@ -1787,6 +1991,7 @@ function showEosNotification(text, icon) {
 // Retorna { quantity: {unit: N}, losses: {unit: N}, remaining: {unit: N} }
 // `remaining` é calculado como max(0, quantity - losses).
 // Retorna null se não conseguiu ler a tabela.
+// Registrado como builtin para recipes poderem chamar via { op: 'call', fn: 'readUnitsTable' }
 function readUnitsTable(table) {
   if (!table) return null;
   const rows = Array.from(table.querySelectorAll('tr'));
@@ -2272,6 +2477,23 @@ function injectSupportSendButton(troops, groupId, groupName) {
   container.appendChild(btn);
   document.body.appendChild(container);
 }
+
+// Registo de funções built-in disponíveis para recipes
+registerRecipeFn('readUnitsTable', readUnitsTable);
+registerRecipeFn('parseDate', (str) => {
+  // Aceita "dd/mm/yyyy HH:MM" ou "dd/mm HH:MM" (ano atual)
+  if (!str) return null;
+  let m = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]).toISOString();
+  m = str.match(/(\d{1,2})\/(\d{1,2})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
+  if (m) {
+    const now = new Date();
+    const parsed = new Date(now.getFullYear(), +m[2] - 1, +m[1], +m[3], +m[4]);
+    if (parsed > now) parsed.setFullYear(now.getFullYear() - 1);
+    return parsed.toISOString();
+  }
+  return null;
+});
 
 function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); autoFillSupportIfPending(); }
 if (document.readyState === 'loading') {
