@@ -187,7 +187,21 @@ async function setupAlarms(world, schedules) {
 
 // ── Trigger report (world-scoped) ───────────────────────────────────────────
 
+// Lock em memória por mundo para prevenir race conditions quando 2+ alarmes
+// disparam no mesmo segundo (cada triggerReport espera o anterior completar)
+const _triggerReportLocks = {};
+
 async function triggerReport(world, groupId, groupName) {
+  // Serializa chamadas para o mesmo mundo
+  const prev = _triggerReportLocks[world] || Promise.resolve();
+  const run = prev.then(() => _triggerReportInner(world, groupId, groupName)).catch(e => {
+    console.error(`[EOS triggerReport] erro:`, e);
+  });
+  _triggerReportLocks[world] = run;
+  return run;
+}
+
+async function _triggerReportInner(world, groupId, groupName) {
   const wd = await getWorldData(world);
   console.log(`[EOS triggerReport] world=${world} groupId=${groupId} playerName=${wd.playerName}`);
   if (!wd.playerName) {
@@ -195,13 +209,11 @@ async function triggerReport(world, groupId, groupName) {
     return;
   }
 
-  // Se já há um report em curso neste mundo, coloca na fila
   const queueKey = worldKey(world, 'reportQueue');
   const pendingKey = worldKey(world, 'pendingTroopRequest');
   const pendingTimeKey = worldKey(world, 'pendingTroopRequestTime');
   const { [pendingKey]: pending, [queueKey]: queue = [], [pendingTimeKey]: pendingTime } = await chrome.storage.local.get([pendingKey, queueKey, pendingTimeKey]);
 
-  // Se a flag está pendente há mais de 5 minutos, é stale — limpa
   const STALE_MS = 5 * 60 * 1000;
   if (pending && pendingTime && (Date.now() - pendingTime) > STALE_MS) {
     console.warn(`[EOS triggerReport] flag pending stale (>${STALE_MS}ms) — a limpar`);
@@ -337,9 +349,24 @@ async function checkTroopRequest(world) {
   } catch (_) {}
 }
 
+// Limpa flags pending de todas as sessões anteriores.
+// Se o browser foi fechado mid-report, a flag fica presa a true e bloqueia todos os reports seguintes.
+async function clearStalePendingFlags() {
+  const all = await chrome.storage.local.get(null);
+  const toReset = {};
+  for (const key of Object.keys(all)) {
+    if (key.match(/^eos\..+\.pendingTroopRequest$/) && all[key] === true) {
+      toReset[key] = false;
+      console.log(`[EOS] A limpar flag pending stale: ${key}`);
+    }
+  }
+  if (Object.keys(toReset).length > 0) await chrome.storage.local.set(toReset);
+}
+
 // ── Eventos ─────────────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(async () => {
+  clearStalePendingFlags();
   // ── Migração: copia dados antigos (globais) para chaves world-scoped ──
   const all = await chrome.storage.local.get(null);
   const oldWorld = all.eosWorld;
@@ -374,6 +401,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  clearStalePendingFlags();
   await new Promise(resolve => setTimeout(resolve, 3000));
   const all = await chrome.storage.local.get(null);
   const worlds = new Set();
