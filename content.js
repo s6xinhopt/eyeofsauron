@@ -1160,11 +1160,13 @@ let eosMapEnabled = true;
 
 // Configuração de bunk types (guardada no storage)
 // Pop defensiva por unidade: spear=1, sword=1, heavy=6
-const DEF_POP = { spear: 1, sword: 1, heavy: 6 };
+const DEF_POP = { spear: 1, sword: 1, archer: 1, heavy: 6, militia: 1 };
 
 function calcDefPop(troops) {
   if (!troops) return 0;
-  return (troops.spear || 0) * DEF_POP.spear + (troops.sword || 0) * DEF_POP.sword + (troops.heavy || 0) * DEF_POP.heavy;
+  let sum = 0;
+  for (const [u, pop] of Object.entries(DEF_POP)) sum += (troops[u] || 0) * pop;
+  return sum;
 }
 
 const DEFAULT_BUNK_TYPES = [
