@@ -160,8 +160,12 @@ async function setupAlarms(world, schedules) {
     if (a.name.startsWith(`auto-report-${world}-`)) await chrome.alarms.clear(a.name);
   }
 
-  if (!schedules || schedules.length === 0) return;
+  if (!schedules || schedules.length === 0) {
+    console.log(`[EOS alarms] ${world}: sem schedules — nenhum alarme criado`);
+    return;
+  }
 
+  let count = 0;
   for (const sched of schedules) {
     if (!sched.times || sched.times.length === 0) continue;
     for (const time of sched.times) {
@@ -169,12 +173,16 @@ async function setupAlarms(world, schedules) {
       const target = new Date();
       target.setHours(hh, mm, 0, 0);
       if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
-      chrome.alarms.create(`auto-report-${world}-${sched.twGroupId}-${time}`, {
+      const name = `auto-report-${world}-${sched.twGroupId}-${time}`;
+      chrome.alarms.create(name, {
         when: target.getTime(),
         periodInMinutes: 24 * 60
       });
+      console.log(`[EOS alarms] ${world}: criado ${name} para ${target.toLocaleString()}`);
+      count++;
     }
   }
+  console.log(`[EOS alarms] ${world}: ${count} alarmes ativos`);
 }
 
 // ── Trigger report (world-scoped) ───────────────────────────────────────────
@@ -365,6 +373,7 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  console.log(`[EOS alarm] disparou: ${alarm.name} @ ${new Date().toLocaleString()}`);
   // check-requests-{world}
   const crMatch = alarm.name.match(/^check-requests-(.+)$/);
   if (crMatch) {
@@ -386,6 +395,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
   const wd = await getWorldData(world);
   const sched = (wd.schedules || []).find(s => String(s.twGroupId) === groupId);
+  console.log(`[EOS alarm] auto-report → world=${world} groupId=${groupId} groupName=${sched?.twGroupName || 'Todos'}`);
   await triggerReport(world, groupId, sched?.twGroupName || 'Todos');
 });
 
