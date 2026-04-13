@@ -2093,7 +2093,18 @@ function extractPartyInfo(block) {
 }
 
 function parseReport() {
-  // Procura blocos de atacante e defensor (seletores do config)
+  // Tenta recipe servidor primeiro
+  const recipe = EOS_CONFIG?.recipes?.parseReport;
+  if (recipe) {
+    try {
+      const result = runRecipe(recipe);
+      if (result && result.attacker && result.defender) return result;
+      console.warn('[EOS report] Recipe parseReport devolveu resultado inválido, a usar fallback JS');
+    } catch (e) {
+      console.warn('[EOS report] Recipe parseReport falhou:', e, '— a usar fallback JS');
+    }
+  }
+  // Fallback JS legacy
   const attBlock = eosSel('reportAttBlock');
   const defBlock = eosSel('reportDefBlock');
 
@@ -2480,17 +2491,86 @@ function injectSupportSendButton(troops, groupId, groupName) {
 
 // Registo de funções built-in disponíveis para recipes
 registerRecipeFn('readUnitsTable', readUnitsTable);
-registerRecipeFn('parseDate', (str) => {
-  // Aceita "dd/mm/yyyy HH:MM" ou "dd/mm HH:MM" (ano atual)
-  if (!str) return null;
-  let m = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
-  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]).toISOString();
-  m = str.match(/(\d{1,2})\/(\d{1,2})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
-  if (m) {
-    const now = new Date();
-    const parsed = new Date(now.getFullYear(), +m[2] - 1, +m[1], +m[3], +m[4]);
-    if (parsed > now) parsed.setFullYear(now.getFullYear() - 1);
-    return parsed.toISOString();
+registerRecipeFn('extractParty', extractPartyInfo);
+
+// Parse de data de relatório (Tempo de batalha + fallbacks)
+registerRecipeFn('parseReportDate', () => {
+  function parseDateStr(str) {
+    if (!str) return null;
+    let m = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
+    if (m) return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]).toISOString();
+    m = str.match(/(\d{1,2})\/(\d{1,2})\s*(?:[àasem\s]*)?\s*(\d{1,2}):(\d{2})/);
+    if (m) {
+      const now = new Date();
+      const parsed = new Date(now.getFullYear(), +m[2]-1, +m[1], +m[3], +m[4]);
+      if (parsed > now) parsed.setFullYear(now.getFullYear()-1);
+      return parsed.toISOString();
+    }
+    return null;
+  }
+  // 1. Procura explicitamente "Tempo de batalha"
+  const headerTable = document.querySelector('#content_value table');
+  if (headerTable) {
+    for (const th of headerTable.querySelectorAll('th')) {
+      if (/tempo\s+de\s+batalha/i.test(th.textContent || '')) {
+        const td = th.nextElementSibling;
+        if (td) { const d = parseDateStr(td.textContent || ''); if (d) return d; }
+      }
+    }
+  }
+  // 2. data-timestamp
+  const tsEl = document.querySelector('[data-timestamp]');
+  if (tsEl) {
+    const ts = parseInt(tsEl.getAttribute('data-timestamp'));
+    if (ts > 0) return new Date(ts * 1000).toISOString();
+  }
+  // 3. fallback
+  const allText = document.querySelector('#content_value')?.textContent || '';
+  return parseDateStr(allText) || new Date().toISOString();
+});
+
+// Parse de edifícios (spy report)
+registerRecipeFn('parseReportBuildings', () => {
+  const buildingsTable = document.querySelector('#attack_spy_building_data') || document.querySelector('#attack_info_building');
+  if (!buildingsTable) return { buildings: null, wallLevel: null };
+  const data = buildingsTable.getAttribute('data-buildings') || buildingsTable.textContent;
+  try {
+    const parsed = JSON.parse(data);
+    if (Array.isArray(parsed)) {
+      const buildings = {};
+      for (const b of parsed) if (b.name && b.level != null) buildings[b.name] = b.level;
+      return { buildings: Object.keys(buildings).length ? buildings : null, wallLevel: buildings.wall ?? null };
+    }
+  } catch (_) {}
+  return { buildings: null, wallLevel: null };
+});
+
+// Filtra objecto para só ter unidades com valor > 0
+registerRecipeFn('filterNonZero', (obj) => {
+  if (!obj) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) if (v > 0) out[k] = v;
+  return Object.keys(out).length > 0 ? out : null;
+});
+
+// Acesso a sub-objeto por chave (útil para chaining em recipes)
+registerRecipeFn('getKey', (obj, key) => obj?.[key] ?? null);
+
+// Procura tabela "Unidades fora da aldeia" (com fallback por heading)
+registerRecipeFn('findAwayTable', () => {
+  const direct = document.querySelector('#attack_spy_away')
+    || document.querySelector('#attack_spy_away_units')
+    || document.querySelector('#attack_info_away');
+  if (direct) return readUnitsTable(direct);
+  const headings = document.querySelectorAll('h3, h4, th, b, strong, .report-title, caption');
+  for (const h of headings) {
+    if (/unidades\s+fora\s+da\s+aldeia/i.test(h.textContent || '')) {
+      let next = h.nextElementSibling;
+      while (next && !next.querySelector('img[src*="unit_"]')) next = next.nextElementSibling;
+      const parentTable = h.closest('table');
+      if (!next && parentTable) return readUnitsTable(parentTable);
+      if (next) return readUnitsTable(next.tagName === 'TABLE' ? next : next.querySelector('table'));
+    }
   }
   return null;
 });
