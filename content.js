@@ -1670,22 +1670,21 @@ function startShieldTracking() {
   placeShields();
 
   // Observer: quando o TW adiciona/remove sectors (pan), recoloca escudos/ícones
-  // Observa só childList directo do #map (não subtree) — TW adiciona sectors como
-  // filhos directos, então não precisamos observar o subtree inteiro.
-  const container = mapEl || document.getElementById('map_container');
+  // Observa map_container mas só childList (não subtree) — muito mais leve
+  const container = document.getElementById('map_container') || mapEl;
   let debounce = null;
   let lastRun = 0;
   const obs = new MutationObserver(() => {
     if (debounce) clearTimeout(debounce);
+    // Debounce longo mas com force-run se já passou muito tempo
     const since = Date.now() - lastRun;
-    // Mínimo 1s entre runs; se ainda recente, espera mais
-    const wait = since > 5000 ? 1000 : 1500;
+    const wait = since > 2000 ? 100 : 500;
     debounce = setTimeout(() => { lastRun = Date.now(); placeShields(); }, wait);
   });
-  obs.observe(container, { childList: true, subtree: false });
+  obs.observe(container, { childList: true, subtree: true });
 
-  // Fallback periódico (longo — observer apanha quase tudo)
-  setInterval(placeShields, 120000);
+  // Fallback periódico
+  setInterval(placeShields, 30000);
 }
 
 function setupPopupObserver() {
