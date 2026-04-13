@@ -696,7 +696,7 @@ async function main() {
       showOverlay(`⚔️ A enviar ${villages.length} aldeias...`, 'info', 85);
       const res = await fetch(`${EOS_SERVER}/api/village-troops`, {
         method: 'POST', headers: hdrs,
-        body: JSON.stringify({ villages })
+        body: JSON.stringify({ villages, groupId })
       });
       if (!res.ok) throw new Error(`Servidor: ${res.status}`);
     }
