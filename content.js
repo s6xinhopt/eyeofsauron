@@ -2612,30 +2612,24 @@ async function injectSupportSendButton(troops, groupId, groupName) {
     + 'color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;'
     + 'box-shadow:0 2px 8px rgba(76,175,80,.4)';
 
-  btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    btn.textContent = '⏳ A enviar...';
-    try {
-      // Submete o formulário do TW. O botão nativo é tipicamente "Confirmar apoio"
-      // mas o form tem um submit que o TW intercepta.
-      const form = document.querySelector('form#command-data-form, form[action*="place"]');
-      if (!form) throw new Error('Formulário não encontrado');
-      // Encontra e clica o botão de submit do TW
-      const submitBtn = form.querySelector('input[type="submit"], button[type="submit"]')
-        || form.querySelector('.btn-confirm-yes');
-      if (submitBtn) {
-        submitBtn.click();
-      } else {
-        form.submit();
-      }
-      btn.textContent = '✔ Enviado — aguarda confirmação do TW';
-      btn.style.background = 'linear-gradient(180deg,#4caf50,#2d8030)';
-    } catch (e) {
-      btn.textContent = '❌ ' + e.message;
-      btn.style.background = '#5a2020';
-      setTimeout(() => { btn.disabled = false; btn.textContent = 'Enviar apoio'; }, 3000);
+  btn.textContent = '✔ Tropas preenchidas — clica "Enviar apoio" do TW';
+  btn.disabled = true;
+  btn.style.background = 'linear-gradient(180deg,#3a5a30,#2d4520)';
+  btn.style.cursor = 'default';
+
+  // Faz scroll até ao botão nativo do TW para o utilizador o ver
+  setTimeout(() => {
+    const twBtn = document.querySelector('form#command-data-form input[type="submit"], form[action*="place"] input[type="submit"], #target_attack, .btn-confirm-yes')
+      || Array.from(document.querySelectorAll('input[type="submit"], button[type="submit"]'))
+        .find(b => /enviar apoio|apoio/i.test((b.value || b.textContent || '')));
+    if (twBtn) {
+      twBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Highlight curto
+      const orig = twBtn.style.boxShadow;
+      twBtn.style.boxShadow = '0 0 0 3px #f8c048, 0 0 12px #e87830';
+      setTimeout(() => { twBtn.style.boxShadow = orig; }, 3000);
     }
-  });
+  }, 600);
 
   container.appendChild(btn);
   document.body.appendChild(container);
