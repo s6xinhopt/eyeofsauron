@@ -189,14 +189,24 @@ async function setupAlarms(world, schedules) {
 
 async function triggerReport(world, groupId, groupName) {
   const wd = await getWorldData(world);
-  if (!wd.playerName) return;
+  console.log(`[EOS triggerReport] world=${world} groupId=${groupId} playerName=${wd.playerName}`);
+  if (!wd.playerName) {
+    console.warn(`[EOS triggerReport] ABORTADO: sem playerName para ${world}`);
+    return;
+  }
 
   // Se já há um report em curso neste mundo, coloca na fila
   const queueKey = worldKey(world, 'reportQueue');
   const pendingKey = worldKey(world, 'pendingTroopRequest');
-  const { [pendingKey]: pending, [queueKey]: queue = [] } = await chrome.storage.local.get([pendingKey, queueKey]);
+  const pendingTimeKey = worldKey(world, 'pendingTroopRequestTime');
+  const { [pendingKey]: pending, [queueKey]: queue = [], [pendingTimeKey]: pendingTime } = await chrome.storage.local.get([pendingKey, queueKey, pendingTimeKey]);
 
-  if (pending) {
+  // Se a flag está pendente há mais de 5 minutos, é stale — limpa
+  const STALE_MS = 5 * 60 * 1000;
+  if (pending && pendingTime && (Date.now() - pendingTime) > STALE_MS) {
+    console.warn(`[EOS triggerReport] flag pending stale (>${STALE_MS}ms) — a limpar`);
+    await chrome.storage.local.set({ [pendingKey]: false });
+  } else if (pending) {
     if (!queue.some(r => r.groupId === (groupId || '0'))) {
       queue.push({ groupId: groupId || '0', groupName: groupName || 'Todos' });
       await chrome.storage.local.set({ [queueKey]: queue });
@@ -220,12 +230,21 @@ async function triggerReport(world, groupId, groupName) {
 
   await chrome.storage.local.set({
     [pendingKey]: true,
+    [pendingTimeKey]: Date.now(),
     [worldKey(world, 'pendingTroopGroupId')]:   groupId || '0',
     [worldKey(world, 'pendingTroopGroupName')]: groupName || 'Todos',
   });
 
   console.log(`[EOS] A iniciar report para ${world} grupo "${groupName || 'Todos'}"`);
-  const tab = await chrome.tabs.create({ url: troopsUrl, active: false });
+  let tab;
+  try {
+    tab = await chrome.tabs.create({ url: troopsUrl, active: false });
+    console.log(`[EOS] Tab criada: id=${tab.id}`);
+  } catch (e) {
+    console.error(`[EOS] Erro ao criar tab:`, e);
+    await chrome.storage.local.set({ [pendingKey]: false });
+    return;
+  }
 
   const listener = (tabId, info) => {
     if (tabId !== tab.id || info.status !== 'complete') return;
