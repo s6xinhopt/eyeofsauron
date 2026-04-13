@@ -1185,11 +1185,17 @@ let enemyBunkTypes = [...DEFAULT_ENEMY_BUNK_TYPES];
 let showAllyBunks = true;
 let showEnemyBunks = true;
 let bunksAnimated = true;
+let showSkullIcon  = true;
+let showAxeIcon    = true;
+let showSwordIcon  = true;
+let iconSize       = 18;   // 14-26px
+let skullDays      = 5;    // 1-14 dias
 
-function makeShieldElement(color) {
+function makeShieldElement(color, size = 18) {
   const el = document.createElement('div');
   el.textContent = '🛡️';
-  el.style.cssText = `font-size:11px;line-height:18px;width:18px;height:18px;text-align:center;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 0 4px ${color}88,0 1px 3px rgba(0,0,0,.6)`;
+  const fs = Math.round(size * 0.6);
+  el.style.cssText = `font-size:${fs}px;line-height:${size}px;width:${size}px;height:${size}px;text-align:center;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 0 4px ${color}88,0 1px 3px rgba(0,0,0,.6)`;
   return el;
 }
 
@@ -1226,10 +1232,10 @@ function calcOffPop(troops) {
 // Devolve { title, bg, imgSrc, emoji } ou null se sem info útil
 function classifyEnemyTactical(report) {
   if (!report) return null;
-  // 💀 Wiped
-  if (report.troops_wiped_at) {
+  // 💀 Wiped (usa skullDays configurável)
+  if (showSkullIcon && report.troops_wiped_at) {
     const age = Date.now() - new Date(report.troops_wiped_at).getTime();
-    if (age <= 5 * 24 * 60 * 60 * 1000) {
+    if (age <= skullDays * 24 * 60 * 60 * 1000) {
       return { title: 'Tropas pertencentes eliminadas', bg: '#2a1010', emoji: '💀' };
     }
   }
@@ -1239,12 +1245,14 @@ function classifyEnemyTactical(report) {
   const defPop = calcDefPop(outside);
   if (offPop === 0 && defPop === 0) return null;
   if (offPop > defPop) {
+    if (!showAxeIcon) return null;
     return {
       title: `Pertencentes ofensivas (off pop ${offPop})`,
       bg: '#c02020',
       imgSrc: '/graphic/unit/unit_axe.png',
     };
   }
+  if (!showSwordIcon) return null;
   return {
     title: `Pertencentes defensivas (def pop ${defPop})`,
     bg: '#20305a',
@@ -1309,15 +1317,22 @@ async function initMapOverlay() {
 
   // Carrega definições guardadas
   const { eosBunkTypes, eosEnemyBunkTypes, eosMapEnabled: savedEnabled,
-          eosShowAllyBunks, eosShowEnemyBunks, eosBunksAnimated } = await getStorage(
+          eosShowAllyBunks, eosShowEnemyBunks, eosBunksAnimated,
+          eosShowSkull, eosShowAxe, eosShowSword, eosIconSize, eosSkullDays } = await getStorage(
     'eosBunkTypes', 'eosEnemyBunkTypes', 'eosMapEnabled',
-    'eosShowAllyBunks', 'eosShowEnemyBunks', 'eosBunksAnimated');
+    'eosShowAllyBunks', 'eosShowEnemyBunks', 'eosBunksAnimated',
+    'eosShowSkull', 'eosShowAxe', 'eosShowSword', 'eosIconSize', 'eosSkullDays');
   if (savedEnabled === false) eosMapEnabled = false;
   if (Array.isArray(eosBunkTypes) && eosBunkTypes.length > 0) bunkTypes = eosBunkTypes;
   if (Array.isArray(eosEnemyBunkTypes) && eosEnemyBunkTypes.length > 0) enemyBunkTypes = eosEnemyBunkTypes;
   if (eosShowAllyBunks === false) showAllyBunks = false;
   if (eosShowEnemyBunks === false) showEnemyBunks = false;
   if (eosBunksAnimated === false) bunksAnimated = false;
+  if (eosShowSkull === false) showSkullIcon = false;
+  if (eosShowAxe === false) showAxeIcon = false;
+  if (eosShowSword === false) showSwordIcon = false;
+  if (typeof eosIconSize === 'number' && eosIconSize >= 12 && eosIconSize <= 28) iconSize = eosIconSize;
+  if (typeof eosSkullDays === 'number' && eosSkullDays >= 1 && eosSkullDays <= 30) skullDays = eosSkullDays;
 
   // Observa o popup nativo do TW para injetar dados de tropas
   setupPopupObserver();
@@ -1450,7 +1465,7 @@ function buildSettingsPanelHTML() {
     <div style="flex:1;overflow-y:auto;padding:14px" class="eos-scroll">
 
       <!-- Flags gerais (3 colunas) -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
           <span style="font-size:11px;color:#f0e0c8">Bunks aliados</span>
           ${miniToggle('eos-toggle-ally', showAllyBunks)}
@@ -1462,6 +1477,47 @@ function buildSettingsPanelHTML() {
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
           <span style="font-size:11px;color:#f0e0c8">Animados</span>
           ${miniToggle('eos-toggle-anim', bunksAnimated)}
+        </div>
+      </div>
+
+      <!-- Ícones táticos inimigos -->
+      <div style="margin-bottom:10px;padding:10px;background:#1a130e;border-radius:6px;border:1px solid #3a2a1a">
+        <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
+          Ícones táticos inimigos
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#2a1010;border-radius:4px">
+            <span style="font-size:11px;color:#f0e0c8">💀 Caveira</span>
+            ${miniToggle('eos-toggle-skull', showSkullIcon)}
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#2a1010;border-radius:4px">
+            <span style="font-size:11px;color:#f0e0c8"><img src="/graphic/unit/unit_axe.png" style="width:13px;height:13px;vertical-align:middle"> Ofensivo</span>
+            ${miniToggle('eos-toggle-axe', showAxeIcon)}
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#10132a;border-radius:4px">
+            <span style="font-size:11px;color:#f0e0c8"><img src="/graphic/unit/unit_sword.png" style="width:13px;height:13px;vertical-align:middle"> Defensivo</span>
+            ${miniToggle('eos-toggle-sword', showSwordIcon)}
+          </div>
+        </div>
+      </div>
+
+      <!-- Sliders: tamanho + dias caveira -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div style="padding:10px;background:#1f1812;border-radius:6px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:11px;color:#f0e0c8">Tamanho dos ícones</span>
+            <span id="eos-icon-size-val" style="font-size:11px;color:#f0b878;font-weight:700">${iconSize}px</span>
+          </div>
+          <input id="eos-icon-size" type="range" min="12" max="28" step="1" value="${iconSize}"
+            style="width:100%;accent-color:#e87830">
+        </div>
+        <div style="padding:10px;background:#1f1812;border-radius:6px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:11px;color:#f0e0c8">Validade da caveira</span>
+            <span id="eos-skull-days-val" style="font-size:11px;color:#f0b878;font-weight:700">${skullDays} dias</span>
+          </div>
+          <input id="eos-skull-days" type="range" min="1" max="14" step="1" value="${skullDays}"
+            style="width:100%;accent-color:#e87830">
         </div>
       </div>
 
@@ -1526,6 +1582,23 @@ function attachSettingsEvents(panel) {
   bindMiniToggle('eos-toggle-ally',  () => showAllyBunks,  v => showAllyBunks = v);
   bindMiniToggle('eos-toggle-enemy', () => showEnemyBunks, v => showEnemyBunks = v);
   bindMiniToggle('eos-toggle-anim',  () => bunksAnimated, v => bunksAnimated = v);
+  bindMiniToggle('eos-toggle-skull', () => showSkullIcon, v => showSkullIcon = v);
+  bindMiniToggle('eos-toggle-axe',   () => showAxeIcon,   v => showAxeIcon = v);
+  bindMiniToggle('eos-toggle-sword', () => showSwordIcon, v => showSwordIcon = v);
+
+  // Sliders com preview ao vivo
+  const sizeSlider = panel.querySelector('#eos-icon-size');
+  const sizeVal    = panel.querySelector('#eos-icon-size-val');
+  sizeSlider?.addEventListener('input', () => {
+    iconSize = parseInt(sizeSlider.value) || 18;
+    if (sizeVal) sizeVal.textContent = `${iconSize}px`;
+  });
+  const daysSlider = panel.querySelector('#eos-skull-days');
+  const daysVal    = panel.querySelector('#eos-skull-days-val');
+  daysSlider?.addEventListener('input', () => {
+    skullDays = parseInt(daysSlider.value) || 5;
+    if (daysVal) daysVal.textContent = `${skullDays} dias`;
+  });
 
   // Campos dos bunk cards (ally e enemy)
   panel.querySelectorAll('[data-section]').forEach(input => {
@@ -1550,6 +1623,11 @@ function attachSettingsEvents(panel) {
       eosShowAllyBunks: showAllyBunks,
       eosShowEnemyBunks: showEnemyBunks,
       eosBunksAnimated: bunksAnimated,
+      eosShowSkull: showSkullIcon,
+      eosShowAxe:   showAxeIcon,
+      eosShowSword: showSwordIcon,
+      eosIconSize:  iconSize,
+      eosSkullDays: skullDays,
     });
     // Re-render: remove escudos e inimigos antigos e recria com novas definições
     document.querySelectorAll('[data-eos-shield],[data-eos-enemy]').forEach(el => el.remove());
@@ -1633,7 +1711,7 @@ function placeShields() {
 
   const SWORD_IMG = chrome.runtime.getURL('png/unit_sword.png');
   const VILLAGE_W = 53;
-  const ICON_SIZE = 18;
+  const ICON_SIZE = iconSize;
   const ICON_GAP = 2;
   const animClass = bunksAnimated ? 'eos-shield-icon' : '';
 
@@ -1661,12 +1739,14 @@ function placeShields() {
         if (troops) {
           const bt = classifyVillageForMap(troops);
           if (bt) {
-            const shield = makeShieldElement(bt.color);
+            const shield = makeShieldElement(bt.color, ICON_SIZE);
             shield.dataset.eosShield = coordKey;
             shield.title = bt.name + ' (' + coordKey + ')';
             shield.className = animClass;
             const delay = (Math.random() * 2).toFixed(1);
-            shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 20}px;top:${top - 5}px;animation-delay:${delay}s`;
+            const shieldLeft = left + VILLAGE_W / 2 - ICON_SIZE / 2;
+            const shieldTop  = top - ICON_SIZE + 4;
+            shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${shieldLeft}px;top:${shieldTop}px;animation-delay:${delay}s`;
             parent.insertBefore(shield, domVillage);
           }
         }
@@ -1695,7 +1775,7 @@ function placeShields() {
       let cursor = startX;
 
       if (!alreadyEnemyShield && wantShield) {
-        const shield = makeShieldElement(best.defColor);
+        const shield = makeShieldElement(best.defColor, ICON_SIZE);
         shield.dataset.eosEnemyShield = coordKey;
         shield.title = `Inimigo bunker: ${best.defSize} (${coordKey})`;
         shield.className = animClass;
@@ -1709,11 +1789,13 @@ function placeShields() {
         icon.dataset.eosEnemy = coordKey;
         icon.title = `${tactical.title} (${coordKey})`;
         icon.className = animClass;
-        icon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${cursor}px;top:${iconTop}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${tactical.bg};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${tactical.bg}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s;font-size:13px;line-height:1`;
+        const innerImgSz = Math.round(ICON_SIZE * 0.65);
+        const emojiFs    = Math.round(ICON_SIZE * 0.75);
+        icon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${cursor}px;top:${iconTop}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${tactical.bg};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${tactical.bg}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s;font-size:${emojiFs}px;line-height:1`;
         if (tactical.imgSrc) {
           const img = document.createElement('img');
           img.src = tactical.imgSrc;
-          img.style.cssText = 'width:12px;height:12px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
+          img.style.cssText = `width:${innerImgSz}px;height:${innerImgSz}px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))`;
           icon.appendChild(img);
         } else if (tactical.emoji) {
           icon.textContent = tactical.emoji;
