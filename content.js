@@ -490,11 +490,20 @@ function readPerVillageTroops(onProgress) {
     return troops;
   }
 
+  // Helper: devolve o link da aldeia olhando as primeiras 2 células
+  function findVillageLink(cells) {
+    for (let i = 0; i < Math.min(2, cells.length); i++) {
+      const a = cells[i]?.querySelector('a[href*="screen=info_village"], a[href*="village="]');
+      if (a) return a;
+    }
+    return null;
+  }
+
   // Conta total de aldeias primeiro (para a barra de progresso)
   let totalVillageCount = 0;
   for (const row of allRows) {
-    const firstTd = row.querySelector('td');
-    if (firstTd?.querySelector('a[href*="screen=info_village"], a[href*="village="]')) totalVillageCount++;
+    const cells = Array.from(row.querySelectorAll('td'));
+    if (findVillageLink(cells)) totalVillageCount++;
   }
 
   let villageIndex = 0;
@@ -503,8 +512,8 @@ function readPerVillageTroops(onProgress) {
     if (cells.length < 3) continue;
 
     // Row com link de aldeia = header de aldeia + "as suas próprias"
-    // O link da aldeia está sempre na PRIMEIRA célula da row
-    const firstCellLink = cells[0]?.querySelector('a[href*="screen=info_village"], a[href*="village="]');
+    // Procura nas 2 primeiras células (algumas variantes têm checkbox antes do link)
+    const firstCellLink = findVillageLink(cells);
     if (firstCellLink) {
       villageIndex++;
       if (onProgress) onProgress(villageIndex, totalVillageCount);
@@ -540,6 +549,10 @@ function readPerVillageTroops(onProgress) {
     villages.push(currentVillage);
   }
 
+  console.log(`[EOS troops] scan: ${villages.length}/${totalVillageCount} aldeias processadas`);
+  if (villages.length < totalVillageCount) {
+    console.warn('[EOS troops] ⚠ algumas aldeias não foram lidas. allRows:', allRows.length);
+  }
 
   return villages.length > 0 ? villages : null;
 }
