@@ -464,12 +464,119 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   } else if (message.type === 'SYNC_SCHEDULES') {
     if (message.token && message.world) syncSchedules(message.world, message.token);
   } else if (message.type === 'OPEN_PANEL') {
-    // Abre o popup da extensão
     if (chrome.action?.openPopup) {
       chrome.action.openPopup().catch(() => {});
     }
+  } else if (message.type === 'FILL_SUPPORT_MAIN') {
+    // Executa a lógica do supportSender no MAIN world (acesso ao jQuery do TW)
+    if (sender.tab?.id) {
+      chrome.scripting.executeScript({
+        target: { tabId: sender.tab.id },
+        world: 'MAIN',
+        func: supportSenderMain,
+        args: [message.troops || {}],
+      }).catch(e => console.warn('[EOS bg] FILL_SUPPORT_MAIN falhou:', e));
+    }
   }
 });
+
+// Função executada no MAIN world da página TW. Tem acesso a jQuery, game_data, etc.
+function supportSenderMain(troopsRequested) {
+  try {
+    if (typeof $ === 'undefined') { console.warn('[EOS support] jQuery não disponível'); return; }
+    const requestedUnits = Object.keys(troopsRequested).filter(u => troopsRequested[u] > 0);
+
+    // 1) Header checkboxes (cb_<unit>)
+    try {
+      const headerInputs = document.getElementById('village_troup_list').children[0].children[0].getElementsByTagName('input');
+      for (let i = 0; i < headerInputs.length - 1; i++) {
+        const id = (headerInputs[i].id || '').split('_')[1];
+        if (!id) continue;
+        headerInputs[i].checked = requestedUnits.indexOf(id) !== -1;
+      }
+    } catch (e) { console.warn('[EOS support MAIN] header cbs:', e); }
+
+    // 2) Seleciona todas as aldeias
+    const selAll = document.getElementById('place_call_select_all')
+      || document.querySelector('a#select_all, a.select_all, .select_all_units, [onclick*="selectAll"]');
+    if (selAll) {
+      console.log('[EOS support MAIN] select-all:', selAll.id || selAll.className);
+      selAll.click();
+    } else {
+      const headerMaster = $('#village_troup_list thead input[type=checkbox], #village_troup_list tbody:first tr:first input[type=checkbox]').first();
+      if (headerMaster.length) {
+        console.log('[EOS support MAIN] master cb:', headerMaster.attr('id'));
+        headerMaster.prop('checked', true).trigger('click').trigger('change');
+      }
+      const villageCbs = $('#village_troup_list tbody tr input[type=checkbox]');
+      console.log('[EOS support MAIN] checkboxes aldeia:', villageCbs.length);
+      villageCbs.each(function () {
+        if (!this.checked) { this.checked = true; this.dispatchEvent(new Event('change', { bubbles: true })); }
+      });
+    }
+
+    // 3) Limpa inputs visíveis
+    $('#village_troup_list').find('input[type=number]:visible').val(0);
+
+    // 4) Lê tropas disponíveis por linha
+    const rows = Array.from($('#village_troup_list tbody tr'));
+    const rowData = [];
+    rows.forEach(row => {
+      const hasInput = $(row).find('.call-unit-box-spear, .call-unit-box-axe, .call-unit-box-sword, .call-unit-box-light, .call-unit-box-heavy, .call-unit-box-spy').length > 0;
+      if (!hasInput) return;
+      const available = {};
+      requestedUnits.forEach(u => {
+        const t = parseInt($(row).find(`[data-unit='${u}']`).text().replace(/\D/g, '')) || 0;
+        available[u] = t;
+      });
+      rowData.push({ row, available, assigned: {} });
+    });
+    if (rowData.length === 0) { console.warn('[EOS support MAIN] sem linhas com inputs'); return; }
+    console.log('[EOS support MAIN] aldeias com inputs:', rowData.length);
+
+    // 5) Distribuição (algoritmo do supportSender)
+    requestedUnits.forEach(unit => {
+      const requested = troopsRequested[unit];
+      let factor = requested / rowData.length;
+      const sorted = rowData.slice().sort((a, b) => a.available[unit] - b.available[unit]);
+      for (let i = 0; i < sorted.length; i++) {
+        const avail = sorted[i].available[unit];
+        if (avail < factor) {
+          const deficit = factor - avail;
+          const rem = sorted.length - i - 1;
+          if (rem > 0) factor += deficit / rem;
+          sorted[i].assigned[unit] = avail;
+        } else {
+          const intPart = Math.floor(factor);
+          const frac = factor - intPart;
+          if (avail + 1 > factor) {
+            sorted[i].assigned[unit] = intPart + (Math.random() < frac ? 1 : 0);
+          } else {
+            sorted[i].assigned[unit] = Math.floor(factor);
+          }
+        }
+      }
+    });
+
+    // 6) Escreve via jQuery .val() + triggers
+    let totalFilled = 0;
+    rowData.forEach(rd => {
+      Object.keys(rd.assigned).forEach(unit => {
+        const v = Math.floor(rd.assigned[unit]);
+        if (v <= 0) return;
+        const inp = $(rd.row).find('.call-unit-box-' + unit);
+        if (inp.length) {
+          inp.val(v);
+          inp.trigger('input').trigger('change');
+          totalFilled++;
+        }
+      });
+    });
+    console.log('[EOS support MAIN] preenchidos:', totalFilled);
+  } catch (e) {
+    console.error('[EOS support MAIN] erro:', e);
+  }
+}
 
 // ── Auto-update checker ─────────────────────────────────────────────────────
 
