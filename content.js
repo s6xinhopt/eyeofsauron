@@ -6,6 +6,97 @@ const EOS_SERVER = 'https://eos-server-sooty.vercel.app';
 // ── Mundo atual (extraído do hostname, ex: "pt111") ─────────────────────────
 const CURRENT_WORLD = window.location.hostname.split('.')[0];
 
+// ── Config remota (fetched do servidor, cache local) ────────────────────────
+// Fallback defaults caso o servidor não responda na primeira carga
+const DEFAULT_CONFIG = {
+  version: 0,
+  selectors: {
+    villageUnitsTable: '#units_table, table.vis.overview_table, #content_value table.vis',
+    villageLink:       'a[href*="screen=info_village"], a[href*="village="]',
+    paginationTodos:   'a.paged-nav-item',
+    reportContent:     '#content_value',
+    reportAttBlock:    '#attack_info_att, #attack_info_attacker',
+    reportDefBlock:    '#attack_info_def, #attack_info_defender',
+    reportAttUnits:    '#attack_info_att_units',
+    reportDefUnits:    '#attack_info_def_units',
+    reportSpyAway:     '#attack_spy_away, #attack_spy_away_units, #attack_info_away',
+    reportBuildings:   '#attack_spy_building_data, #attack_info_building',
+    mapContainer:      '#map_container',
+    mapElement:        '#map',
+    mapPopup:          '#map_popup',
+    mapPopupHeader:    '#map_popup th',
+    mapPopupTbody:     '#map_popup #info_content tbody',
+    groupSelect:       'select#group_id, select[name="group_id"]',
+    groupMenuItem:     'span.group-menu-item',
+    placeForm:         'form#command-data-form, form[action*="place"]',
+    questlog:          '#questlog_new',
+  },
+  thresholds: {
+    ally:  { light: 20000, medium: 45000, heavy: 100000 },
+    enemy: { weak: 1, light: 3000, medium: 10000, heavy: 20000 },
+    fullNukePop: 17000, semiNukePop: 10000, fullDefPop: 17000, semiDefPop: 10000,
+  },
+  unitPop: {
+    def: { spear: 1, sword: 1, heavy: 6 },
+    off: { axe: 1, light: 4, ram: 5, catapult: 8, marcher: 5 },
+    all: { spear:1, sword:1, axe:1, archer:1, spy:2, light:4, marcher:5, heavy:6, ram:5, catapult:8, knight:10, snob:100 },
+  },
+  urls: {
+    villageTxt:    'https://{world}.tribalwars.com.pt/map/village.txt',
+    allyTxt:       'https://{world}.tribalwars.com.pt/map/ally.txt',
+    overviewUnits: 'https://{world}.tribalwars.com.pt/game.php?screen=overview_villages&mode=units',
+    placeCall:     'https://{world}.tribalwars.com.pt/game.php?screen=place&mode=call&target={targetVid}',
+  },
+  intervals: {
+    mapDataRefreshMs:      5 * 60 * 1000,
+    enemyReportsRefreshMs: 5 * 60 * 1000,
+    configRefreshMs:       30 * 60 * 1000,
+  },
+  features: { enemyReports: true, supportRequests: true, mapShields: true, autoSyncReports: false },
+};
+
+let EOS_CONFIG = DEFAULT_CONFIG;
+
+async function loadCachedConfig() {
+  try {
+    const { eosConfig, eosConfigTime } = await chrome.storage.local.get(['eosConfig', 'eosConfigTime']);
+    if (eosConfig && eosConfig.version) {
+      EOS_CONFIG = eosConfig;
+      // Refresh em background se for antigo
+      if (!eosConfigTime || Date.now() - eosConfigTime > EOS_CONFIG.intervals.configRefreshMs) {
+        fetchRemoteConfig();
+      }
+      return;
+    }
+  } catch (_) {}
+  // Primeira carga: tenta ir buscar já
+  fetchRemoteConfig();
+}
+
+async function fetchRemoteConfig() {
+  try {
+    const res = await fetch(`${EOS_SERVER}/api/extension-config`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const cfg = await res.json();
+    if (cfg && cfg.version) {
+      EOS_CONFIG = cfg;
+      await chrome.storage.local.set({ eosConfig: cfg, eosConfigTime: Date.now() });
+      console.log('[EOS] Config atualizada, version:', cfg.version);
+    }
+  } catch (e) { console.warn('[EOS] Falha a carregar config:', e); }
+}
+
+// Helper: resolve URL template com {world}, {targetVid}, etc.
+function eosUrl(key, vars = {}) {
+  let url = EOS_CONFIG.urls[key] || '';
+  url = url.replace('{world}', CURRENT_WORLD);
+  for (const [k, v] of Object.entries(vars)) url = url.replace(`{${k}}`, v);
+  return url;
+}
+
+// Carrega config imediatamente
+loadCachedConfig();
+
 function wk(key) { return `eos.${CURRENT_WORLD}.${key}`; }
 
 // Lê chaves world-scoped do storage
@@ -109,10 +200,10 @@ function classifyVillages() {
     for (const u of OFFENSE_UNITS) offPop += (counts[u] || 0) * (POP_COST[u] || 0);
     for (const u of DEFENSE_UNITS) defPop += (counts[u] || 0) * (POP_COST[u] || 0);
 
-    if      (offPop >= 17000) result.full_nuke++;
-    else if (offPop >= 10000) result.semi_nuke++;
-    else if (defPop >= 17000) result.full_def++;
-    else if (defPop >= 10000) result.semi_def++;
+    if      (offPop >= EOS_CONFIG.thresholds.fullNukePop) result.full_nuke++;
+    else if (offPop >= EOS_CONFIG.thresholds.semiNukePop) result.semi_nuke++;
+    else if (defPop >= EOS_CONFIG.thresholds.fullDefPop)  result.full_def++;
+    else if (defPop >= EOS_CONFIG.thresholds.semiDefPop)  result.semi_def++;
     else                      result.other++;
   });
 
@@ -123,8 +214,7 @@ function classifyVillages() {
 
 function readPerVillageTroops(onProgress) {
   const villages = [];
-  const table = document.querySelector('#units_table') || document.querySelector('table.vis.overview_table')
-    || document.querySelector('#content_value table.vis');
+  const table = document.querySelector(EOS_CONFIG.selectors.villageUnitsTable);
   if (!table) return null;
 
   // Descobre o mapeamento coluna → unidade a partir do header
@@ -909,8 +999,8 @@ function classifyEnemyTroops(troopsOwned) {
   const defPop = calcDefPop(troopsOwned);
 
   let offSize = null;
-  if (offPop >= 17000) offSize = 'full';
-  else if (offPop >= 10000) offSize = 'semi';
+  if (offPop >= EOS_CONFIG.thresholds.fullNukePop) offSize = 'full';
+  else if (offPop >= EOS_CONFIG.thresholds.semiNukePop) offSize = 'semi';
   else if (offPop > 0) offSize = 'small';
 
   // Itera do maior threshold para o menor (o maior match ganha)
@@ -1778,9 +1868,9 @@ function extractPartyInfo(block) {
 }
 
 function parseReport() {
-  // Procura blocos de atacante e defensor
-  const attBlock = document.querySelector('#attack_info_att') || document.querySelector('#attack_info_attacker');
-  const defBlock = document.querySelector('#attack_info_def') || document.querySelector('#attack_info_defender');
+  // Procura blocos de atacante e defensor (seletores do config)
+  const attBlock = document.querySelector(EOS_CONFIG.selectors.reportAttBlock);
+  const defBlock = document.querySelector(EOS_CONFIG.selectors.reportDefBlock);
 
   const attacker = extractPartyInfo(attBlock);
   const defender = extractPartyInfo(defBlock);
@@ -1791,8 +1881,8 @@ function parseReport() {
   }
 
   // Lê tabelas de unidades
-  const attUnits = readUnitsTable(document.querySelector('#attack_info_att_units'));
-  const defUnits = readUnitsTable(document.querySelector('#attack_info_def_units'));
+  const attUnits = readUnitsTable(document.querySelector(EOS_CONFIG.selectors.reportAttUnits));
+  const defUnits = readUnitsTable(document.querySelector(EOS_CONFIG.selectors.reportDefUnits));
 
   // Tropas na aldeia do defensor após o ataque (remaining = quantidade - baixas)
   const defenderTroopsRemaining = defUnits ? defUnits.remaining : null;
@@ -2224,7 +2314,7 @@ window.addEventListener('message', (event) => {
         // Lookup village_id pelas coords
         let targetVid = null;
         try {
-          const txt = await fetch(`https://${CURRENT_WORLD}.tribalwars.com.pt/map/village.txt`, { cache: 'no-store' }).then(r => r.text());
+          const txt = await fetch(eosUrl('villageTxt'), { cache: 'no-store' }).then(r => r.text());
           for (const line of txt.split('\n')) {
             const parts = line.split(',');
             // Formato: id,name,x,y,player_id,points,rank
