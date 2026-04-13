@@ -94,6 +94,26 @@ function eosUrl(key, vars = {}) {
   return url;
 }
 
+// Helper: resolve config selector. Se tem vírgulas, tenta cada um EM ORDEM
+// (não usa querySelector com lista porque isso retorna o primeiro na DOM, não o primeiro selector)
+function eosSel(key, root) {
+  const s = EOS_CONFIG.selectors[key];
+  if (!s) return null;
+  const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+  const r = root || document;
+  for (const p of parts) {
+    const el = r.querySelector(p);
+    if (el) return el;
+  }
+  return null;
+}
+
+function eosSelAll(key, root) {
+  const s = EOS_CONFIG.selectors[key];
+  if (!s) return [];
+  return Array.from((root || document).querySelectorAll(s));
+}
+
 // Carrega config imediatamente
 loadCachedConfig();
 
@@ -214,7 +234,7 @@ function classifyVillages() {
 
 function readPerVillageTroops(onProgress) {
   const villages = [];
-  const table = document.querySelector(EOS_CONFIG.selectors.villageUnitsTable);
+  const table = eosSel('villageUnitsTable');
   if (!table) return null;
 
   // Descobre o mapeamento coluna → unidade a partir do header
@@ -1869,8 +1889,8 @@ function extractPartyInfo(block) {
 
 function parseReport() {
   // Procura blocos de atacante e defensor (seletores do config)
-  const attBlock = document.querySelector(EOS_CONFIG.selectors.reportAttBlock);
-  const defBlock = document.querySelector(EOS_CONFIG.selectors.reportDefBlock);
+  const attBlock = eosSel('reportAttBlock');
+  const defBlock = eosSel('reportDefBlock');
 
   const attacker = extractPartyInfo(attBlock);
   const defender = extractPartyInfo(defBlock);
