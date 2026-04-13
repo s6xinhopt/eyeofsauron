@@ -1248,7 +1248,7 @@ function classifyEnemyTactical(report) {
   return {
     title: `Pertencentes defensivas (def pop ${defPop})`,
     bg: '#20305a',
-    imgSrc: '/graphic/unit/unit_spear.png',
+    imgSrc: '/graphic/unit/unit_sword.png',
   };
 }
 
@@ -1644,9 +1644,10 @@ function placeShields() {
     if (!domVillage) continue;
 
     const parent = domVillage.parentNode;
-    const alreadyShield = parent.querySelector(`[data-eos-shield="${coordKey}"]`);
-    const alreadyEnemy  = parent.querySelector(`[data-eos-enemy="${coordKey}"]`);
-    if (alreadyShield && alreadyEnemy) continue;
+    const alreadyShield      = parent.querySelector(`[data-eos-shield="${coordKey}"]`);
+    const alreadyEnemyShield = parent.querySelector(`[data-eos-enemy-shield="${coordKey}"]`);
+    const alreadyEnemy       = parent.querySelector(`[data-eos-enemy="${coordKey}"]`);
+    if (alreadyShield && alreadyEnemyShield && alreadyEnemy) continue;
 
     const top = parseInt(domVillage.style.top, 10) || 0;
     const left = parseInt(domVillage.style.left, 10) || 0;
@@ -1671,30 +1672,51 @@ function placeShields() {
       }
     }
 
-    // ── Ícone tático inimigo: 💀 wiped | 🗡 off | 🛡 def ──
-    if (!alreadyEnemy && hasEnemy && showEnemyBunks && !(hasTribe && mapVillageData.get(coordKey))) {
+    // Inimigo = aldeia com relatório, que NÃO é da nossa tribo
+    const isEnemyVillage = hasEnemy && !(hasTribe && mapVillageData.get(coordKey)) && enemyReportsData.get(coordKey);
+
+    // ── Escudo bunker inimigo (mesma visual do aliado, cor pelo enemyBunkType) ──
+    if (!alreadyEnemyShield && isEnemyVillage && showEnemyBunks) {
       const report = enemyReportsData.get(coordKey);
-      if (report) {
-        const tactical = classifyEnemyTactical(report);
-        if (tactical) {
-          const centerX = left + VILLAGE_W / 2;
-          const icon = document.createElement('div');
-          icon.dataset.eosEnemy = coordKey;
-          icon.title = `${tactical.title} (${coordKey})`;
-          icon.className = animClass;
-          const delay = (Math.random() * 2).toFixed(1);
-          icon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${centerX - ICON_SIZE / 2}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${tactical.bg};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${tactical.bg}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s;font-size:10px;line-height:1`;
-          if (tactical.imgSrc) {
-            const img = document.createElement('img');
-            img.src = tactical.imgSrc;
-            img.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
-            icon.appendChild(img);
-          } else if (tactical.emoji) {
-            icon.textContent = tactical.emoji;
-            icon.style.color = '#fff';
-          }
-          parent.insertBefore(icon, domVillage);
+      // Classifica pelo MAX entre troops (na aldeia) e troops_outside (pertencentes)
+      const c1 = classifyEnemyTroops(report.troops);
+      const c2 = classifyEnemyTroops(report.troops_outside);
+      const best = (c1.defPop >= c2.defPop) ? c1 : c2;
+      if (best.defSize && best.defColor) {
+        const shield = makeShieldElement(best.defColor);
+        shield.dataset.eosEnemyShield = coordKey;
+        shield.title = `Inimigo bunker: ${best.defSize} (${coordKey})`;
+        shield.className = animClass;
+        const delay = (Math.random() * 2).toFixed(1);
+        shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 20}px;top:${top - 5}px;animation-delay:${delay}s`;
+        parent.insertBefore(shield, domVillage);
+      }
+    }
+
+    // ── Ícone tático inimigo: 💀 wiped | 🗡 off | 🛡 def (lado a lado do escudo) ──
+    if (!alreadyEnemy && isEnemyVillage && showEnemyBunks) {
+      const report = enemyReportsData.get(coordKey);
+      const tactical = classifyEnemyTactical(report);
+      if (tactical) {
+        // Se já existe escudo bunker, põe o tático à esquerda; senão centra
+        const hasBunkShield = !!parent.querySelector(`[data-eos-enemy-shield="${coordKey}"]`);
+        const iconLeft = hasBunkShield ? left + 4 : left + VILLAGE_W / 2 - ICON_SIZE / 2;
+        const icon = document.createElement('div');
+        icon.dataset.eosEnemy = coordKey;
+        icon.title = `${tactical.title} (${coordKey})`;
+        icon.className = animClass;
+        const delay = (Math.random() * 2).toFixed(1);
+        icon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${iconLeft}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${tactical.bg};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${tactical.bg}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s;font-size:10px;line-height:1`;
+        if (tactical.imgSrc) {
+          const img = document.createElement('img');
+          img.src = tactical.imgSrc;
+          img.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
+          icon.appendChild(img);
+        } else if (tactical.emoji) {
+          icon.textContent = tactical.emoji;
+          icon.style.color = '#fff';
         }
+        parent.insertBefore(icon, domVillage);
       }
     }
   }
