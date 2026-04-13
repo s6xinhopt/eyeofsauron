@@ -1745,7 +1745,7 @@ function placeShields() {
             shield.className = animClass;
             const delay = (Math.random() * 2).toFixed(1);
             const shieldLeft = left + VILLAGE_W / 2 - ICON_SIZE / 2;
-            const shieldTop  = top - ICON_SIZE + 4;
+            const shieldTop  = top - Math.round(ICON_SIZE / 2);
             shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${shieldLeft}px;top:${shieldTop}px;animation-delay:${delay}s`;
             parent.insertBefore(shield, domVillage);
           }
@@ -1770,7 +1770,7 @@ function placeShields() {
       const pairWidth = (wantShield && wantTactical) ? (ICON_SIZE * 2 + ICON_GAP) : ICON_SIZE;
       const startX = left + VILLAGE_W / 2 - pairWidth / 2;
       const delay = (Math.random() * 2).toFixed(1);
-      const iconTop = top - ICON_SIZE + 4;
+      const iconTop = top - Math.round(ICON_SIZE / 2);
 
       let cursor = startX;
 
