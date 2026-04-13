@@ -1852,6 +1852,12 @@ function placeShields() {
       const v = mapVillageData.get(coordKey);
       if (v) {
         const troops = v.troops_total || v.troops_own;
+        // DEBUG coord específica: dump a classificação
+        if (coordKey === '560|443') {
+          console.log('[EOS debug 560|443] v:', v, 'troops:', troops,
+            'defPop:', troops ? calcDefPop(troops) : null,
+            'bunkTypes:', bunkTypes);
+        }
         if (troops) {
           const bt = classifyVillageForMap(troops);
           if (bt) {
