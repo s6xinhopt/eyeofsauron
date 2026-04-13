@@ -467,6 +467,14 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     if (chrome.action?.openPopup) {
       chrome.action.openPopup().catch(() => {});
     }
+  } else if (message.type === 'CLICK_TW_SUPPORT_SUBMIT') {
+    if (sender.tab?.id) {
+      chrome.scripting.executeScript({
+        target: { tabId: sender.tab.id },
+        world: 'MAIN',
+        func: clickTWSupportSubmit,
+      }).catch(e => console.warn('[EOS bg] CLICK_TW_SUPPORT_SUBMIT falhou:', e));
+    }
   } else if (message.type === 'FILL_SUPPORT_MAIN') {
     // Executa a lógica do supportSender no MAIN world (acesso ao jQuery do TW)
     if (sender.tab?.id) {
@@ -479,6 +487,36 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     }
   }
 });
+
+// Clica no botão "Enviar apoio" do TW no MAIN world (handlers JS funcionam)
+function clickTWSupportSubmit() {
+  try {
+    const candidates = [
+      'form#command-data-form input[type="submit"]',
+      'form[action*="place"] input[type="submit"]',
+      '#target_attack',
+      '#troop_confirm_submit',
+      'input[name="target_attack"]',
+    ];
+    let btn = null;
+    for (const sel of candidates) {
+      btn = document.querySelector(sel);
+      if (btn && btn.offsetParent !== null) break;
+      btn = null;
+    }
+    if (!btn) {
+      btn = Array.from(document.querySelectorAll('input[type="submit"], button[type="submit"]'))
+        .find(b => /enviar apoio|apoio|atac/i.test((b.value || b.textContent || '')));
+    }
+    if (!btn) { console.warn('[EOS support MAIN] botão TW não encontrado'); return; }
+    console.log('[EOS support MAIN] clicando botão TW:', btn.id || btn.name || btn.value);
+    if (typeof $ !== 'undefined') {
+      $(btn).trigger('click');
+    } else {
+      btn.click();
+    }
+  } catch (e) { console.error('[EOS support MAIN] click falhou:', e); }
+}
 
 // Função executada no MAIN world da página TW. Tem acesso a jQuery, game_data, etc.
 function supportSenderMain(troopsRequested) {
