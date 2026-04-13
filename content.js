@@ -1626,6 +1626,13 @@ function attachSettingsEvents(panel) {
     } else placeShields();
   });
 
+  // Re-render helper — remove escudos/ícones e recria
+  function liveRerender() {
+    document.querySelectorAll('[data-eos-shield],[data-eos-enemy],[data-eos-enemy-shield]').forEach(el => el.remove());
+    shieldElements = {};
+    if (eosMapEnabled) placeShields();
+  }
+
   // Toggles show/hide ally/enemy/anim
   function bindMiniToggle(id, getter, setter) {
     panel.querySelector('#' + id)?.addEventListener('click', (e) => {
@@ -1635,6 +1642,7 @@ function attachSettingsEvents(panel) {
       btn.setAttribute('data-active', String(newVal));
       btn.style.background = newVal ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
       btn.querySelector('div').style.left = newVal ? '19px' : '3px';
+      liveRerender();
     });
   }
   bindMiniToggle('eos-toggle-ally',  () => showAllyBunks,  v => showAllyBunks = v);
@@ -1650,29 +1658,28 @@ function attachSettingsEvents(panel) {
   sizeSlider?.addEventListener('input', () => {
     iconSize = parseInt(sizeSlider.value) || 18;
     if (sizeVal) sizeVal.textContent = `${iconSize}px`;
+    liveRerender();
   });
   const daysSlider = panel.querySelector('#eos-skull-days');
   const daysVal    = panel.querySelector('#eos-skull-days-val');
   daysSlider?.addEventListener('input', () => {
     skullDays = parseInt(daysSlider.value) || 5;
     if (daysVal) daysVal.textContent = `${skullDays} dias`;
+    liveRerender();
   });
 
   // Animação: preview ao vivo
   panel.querySelector('#eos-anim-type')?.addEventListener('change', (e) => {
     mapAnimation = e.target.value;
     injectShieldStyles();
-    // Re-renderiza para aplicar nova classe
-    document.querySelectorAll('[data-eos-shield],[data-eos-enemy],[data-eos-enemy-shield]').forEach(el => el.remove());
-    if (eosMapEnabled) placeShields();
+    liveRerender();
   });
 
   // Color pickers — preview ao vivo
   function bindColorPicker(id, setter) {
     panel.querySelector('#' + id)?.addEventListener('input', (e) => {
       setter(e.target.value);
-      document.querySelectorAll('[data-eos-enemy]').forEach(el => el.remove());
-      if (eosMapEnabled) placeShields();
+      liveRerender();
     });
   }
   bindColorPicker('eos-color-skull', v => colorSkull = v);
@@ -1690,6 +1697,7 @@ function attachSettingsEvents(panel) {
       if (field === 'enabled') arr[idx].enabled = input.checked;
       else if (field === 'minDefPop') arr[idx].minDefPop = parseInt(input.value) || 0;
       else arr[idx][field] = input.value;
+      liveRerender();
     });
   });
 
