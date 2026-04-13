@@ -2211,12 +2211,12 @@ function parseReport() {
     }
   }
   if (awayResult) {
-    // Filtra só unidades com valor > 0
+    // Filtra só unidades com valor > 0. {} = tabela vista mas vazia (sinal wipe).
     troopsOutside = {};
     for (const [u, n] of Object.entries(awayResult.quantity)) {
       if (n > 0) troopsOutside[u] = n;
     }
-    if (Object.keys(troopsOutside).length === 0) troopsOutside = null;
+    // não converte {} para null — o {} é o sinal que a aldeia está sem pertencentes
   }
 
   // Data do relatório — prioridade:
@@ -2756,7 +2756,8 @@ registerRecipeFn('filterNonZero', (obj) => {
   if (!obj) return null;
   const out = {};
   for (const [k, v] of Object.entries(obj)) if (v > 0) out[k] = v;
-  return Object.keys(out).length > 0 ? out : null;
+  // {} (objeto vazio) = tabela vista mas sem tropas → sinal de wipe a jusante
+  return out;
 });
 
 // Acesso a sub-objeto por chave (útil para chaining em recipes)
