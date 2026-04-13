@@ -1670,21 +1670,22 @@ function startShieldTracking() {
   placeShields();
 
   // Observer: quando o TW adiciona/remove sectors (pan), recoloca escudos/ícones
-  // Observa map_container mas só childList (não subtree) — muito mais leve
-  const container = document.getElementById('map_container') || mapEl;
+  // Observa só childList directo do #map (não subtree) — TW adiciona sectors como
+  // filhos directos, então não precisamos observar o subtree inteiro.
+  const container = mapEl || document.getElementById('map_container');
   let debounce = null;
   let lastRun = 0;
   const obs = new MutationObserver(() => {
     if (debounce) clearTimeout(debounce);
-    // Debounce longo mas com force-run se já passou muito tempo
     const since = Date.now() - lastRun;
-    const wait = since > 2000 ? 100 : 500;
+    // Mínimo 1s entre runs; se ainda recente, espera mais
+    const wait = since > 5000 ? 1000 : 1500;
     debounce = setTimeout(() => { lastRun = Date.now(); placeShields(); }, wait);
   });
-  obs.observe(container, { childList: true, subtree: true });
+  obs.observe(container, { childList: true, subtree: false });
 
-  // Fallback periódico
-  setInterval(placeShields, 30000);
+  // Fallback periódico (longo — observer apanha quase tudo)
+  setInterval(placeShields, 120000);
 }
 
 function setupPopupObserver() {
@@ -2426,8 +2427,238 @@ async function autoFillSupportIfPending() {
   injectSupportSendButton(troops, groupId, groupName);
 }
 
-function injectSupportSendButton(troops, groupId, groupName) {
+// Injeta a lógica no MAIN world (com acesso ao jQuery do TW) — replica
+// o supportSender de referência verbatim, recebendo apenas o objeto de tropas.
+function fillSupportInputsInPage(troopsRequested) {
+  const code = `
+    (function(troopsRequested){
+      try {
+        if (typeof $ === 'undefined') { console.warn('[EOS support] jQuery não disponível'); return; }
+        var requestedUnits = Object.keys(troopsRequested).filter(function(u){ return troopsRequested[u] > 0; });
+
+        // 1) checkboxes do header (cb_<unit>)
+        var headerInputs = document.getElementById('village_troup_list').children[0].children[0].getElementsByTagName('input');
+        for (var i=0; i<headerInputs.length-1; i++){
+          var id = (headerInputs[i].id || '').split('_')[1];
+          if (!id) continue;
+          headerInputs[i].checked = requestedUnits.indexOf(id) !== -1;
+        }
+
+        // 2) seleciona todas as aldeias
+        var selAll = document.getElementById('place_call_select_all');
+        if (selAll) selAll.click();
+
+        // 3) clear inputs visíveis
+        $('#village_troup_list').find('input[type=number]:visible').val(0);
+
+        // 4) Lê tropas disponíveis por linha
+        var rows = Array.from($('#village_troup_list tbody tr'));
+        var rowData = [];
+        rows.forEach(function(row){
+          var hasInput = $(row).find('.call-unit-box-spear, .call-unit-box-axe, .call-unit-box-sword, .call-unit-box-light, .call-unit-box-heavy, .call-unit-box-spy').length > 0;
+          if (!hasInput) return;
+          var available = {};
+          requestedUnits.forEach(function(u){
+            var t = parseInt($(row).find('[data-unit=\\''+u+'\\']').text().replace(/\\D/g,'')) || 0;
+            available[u] = t;
+          });
+          rowData.push({ row: row, available: available, assigned: {} });
+        });
+        if (rowData.length === 0){ console.warn('[EOS support] sem linhas'); return; }
+
+        // 5) Algoritmo: factor = total/n; sort asc; redistribui défice
+        requestedUnits.forEach(function(unit){
+          var requested = troopsRequested[unit];
+          var factor = requested / rowData.length;
+          var sorted = rowData.slice().sort(function(a,b){ return a.available[unit] - b.available[unit]; });
+          for (var i=0; i<sorted.length; i++){
+            var avail = sorted[i].available[unit];
+            if (avail < factor){
+              var deficit = factor - avail;
+              var rem = sorted.length - i - 1;
+              if (rem > 0) factor += deficit / rem;
+              sorted[i].assigned[unit] = avail;
+            } else {
+              var intPart = Math.floor(factor);
+              var frac = factor - intPart;
+              if (avail + 1 > factor){
+                sorted[i].assigned[unit] = intPart + (Math.random() < frac ? 1 : 0);
+              } else {
+                sorted[i].assigned[unit] = Math.floor(factor);
+              }
+            }
+          }
+        });
+
+        // 6) Escreve com $().val() — TW lê via jQuery
+        var totalFilled = 0;
+        rowData.forEach(function(rd){
+          Object.keys(rd.assigned).forEach(function(unit){
+            var v = Math.floor(rd.assigned[unit]);
+            if (v <= 0) return;
+            var inp = $(rd.row).find('.call-unit-box-' + unit);
+            if (inp.length){
+              inp.val(v);
+              inp.trigger('input').trigger('change');
+              totalFilled++;
+            }
+          });
+        });
+        console.log('[EOS support MAIN] preenchidos:', totalFilled, '| aldeias:', rowData.length);
+      } catch(e) { console.error('[EOS support MAIN] erro:', e); }
+    })(${JSON.stringify(troopsRequested)});
+  `;
+  const s = document.createElement('script');
+  s.textContent = code;
+  (document.head || document.documentElement).appendChild(s);
+  s.remove();
+  return true;
+}
+
+// Distribui tropas pedidas pelas aldeias do place&mode=call.
+// Replica fielmente o supportSender de referência:
+//   1) check/uncheck checkboxes de unidades no header (cb_${unit})
+//   2) clica #place_call_select_all (seleciona todas as aldeias)
+//   3) limpa todos os inputs visíveis a 0
+//   4) algoritmo: factor = total/nAldeias; sort ascendente por disponibilidade;
+//      redistribui défice; arredondamento aleatório por fração decimal
+//   5) escreve valor em .call-unit-box-${unit} de cada linha (dispatch input/change)
+function fillSupportInputs(troopsRequested) {
+  const table = document.getElementById('village_troup_list');
+  if (!table) {
+    console.warn('[EOS support] #village_troup_list não encontrada');
+    return false;
+  }
+
+  // ── 1) Header: marcar/desmarcar checkboxes de unidades (cb_${unit}) ──
+  // Reproduz: village_troup_list.children[0].children[0].getElementsByTagName("input")
+  const requestedUnits = Object.entries(troopsRequested)
+    .filter(([_, v]) => v && v > 0)
+    .map(([u]) => u);
+  try {
+    const headerInputs = table.children[0]?.children[0]?.getElementsByTagName('input') || [];
+    for (let i = 0; i < headerInputs.length - 1; i++) {
+      const id = headerInputs[i].id.split('_')[1];
+      if (!id) continue;
+      const shouldCheck = requestedUnits.includes(id);
+      headerInputs[i].checked = shouldCheck;
+      headerInputs[i].dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  } catch (e) {
+    console.warn('[EOS support] header checkboxes:', e);
+  }
+
+  // ── 2) Clica "selecionar todas as aldeias" ──
+  const selectAllBtn = document.getElementById('place_call_select_all');
+  if (selectAllBtn) {
+    try { selectAllBtn.click(); } catch (_) {}
+  } else {
+    console.warn('[EOS support] #place_call_select_all não encontrado');
+  }
+
+  // ── 3) Limpa todos os inputs visíveis a 0 ──
+  const allInputs = table.querySelectorAll('input[type="number"]');
+  for (const inp of allInputs) {
+    if (inp.offsetParent !== null) inp.value = '0';
+  }
+
+  // ── 4) Lê tropas disponíveis por aldeia e prepara estrutura ──
+  // Cada linha de aldeia tem .call-unit-box-X visível
+  const rows = Array.from(table.querySelectorAll('tr')).filter(r =>
+    r.querySelector('input.call-unit-box-spear, input.call-unit-box-axe, input.call-unit-box-sword, input.call-unit-box-light, input.call-unit-box-heavy, input.call-unit-box-spy')
+  );
+  if (rows.length === 0) {
+    console.warn('[EOS support] Sem linhas de aldeias com inputs call-unit-box');
+    return false;
+  }
+  const rowData = rows.map(row => {
+    const available = {};
+    for (const unit of TROOP_NAMES) {
+      // Reproduz: $(row).find(`[data-unit='${u}']`).text()
+      const cell = row.querySelector(`[data-unit='${unit}']`);
+      available[unit] = cell ? (parseInt((cell.textContent || '').replace(/\D/g, '')) || 0) : 0;
+    }
+    return { row, available, assigned: {} };
+  });
+
+  // Validação total pedido vs disponível
+  const insufficient = [];
+  for (const [unit, requested] of Object.entries(troopsRequested)) {
+    if (!requested || requested <= 0) continue;
+    const total = rowData.reduce((s, r) => s + (r.available[unit] || 0), 0);
+    if (requested > total) insufficient.push(`${unit}: ${requested}/${total}`);
+  }
+  if (insufficient.length > 0) {
+    const msg = 'Tropas insuficientes — ' + insufficient.join(', ');
+    console.warn('[EOS support]', msg);
+    if (window.UI && typeof window.UI.ErrorMessage === 'function') {
+      try { window.UI.ErrorMessage(msg, 4000); } catch (_) {}
+    }
+  }
+
+  // ── 5) Algoritmo de distribuição (clone do supportSender) ──
+  for (const [unit, requested] of Object.entries(troopsRequested)) {
+    if (!requested || requested <= 0) continue;
+    let factor = requested / rowData.length;
+    const sorted = [...rowData].sort((a, b) => a.available[unit] - b.available[unit]);
+    for (let i = 0; i < sorted.length; i++) {
+      const avail = sorted[i].available[unit];
+      if (avail < factor) {
+        const deficit = factor - avail;
+        const remaining = sorted.length - i - 1;
+        if (remaining > 0) factor += deficit / remaining;
+        sorted[i].assigned[unit] = avail;
+      } else {
+        const intPart = Math.floor(factor);
+        const frac = factor - intPart;
+        if (avail + 1 > factor) {
+          sorted[i].assigned[unit] = intPart + (Math.random() < frac ? 1 : 0);
+        } else {
+          sorted[i].assigned[unit] = Math.floor(factor);
+        }
+      }
+    }
+  }
+
+  // ── 6) Escreve valores nos inputs .call-unit-box-${unit} ──
+  let totalFilled = 0;
+  for (const { row, assigned } of rowData) {
+    for (const [unit, value] of Object.entries(assigned)) {
+      const v = Math.floor(value);
+      if (v <= 0) continue;
+      const input = row.querySelector(`input.call-unit-box-${unit}`);
+      if (input) {
+        input.value = String(v);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        totalFilled++;
+      }
+    }
+  }
+
+  console.log('[EOS support] Inputs preenchidos:', totalFilled, '| aldeias:', rowData.length);
+  return totalFilled > 0;
+}
+
+async function waitForCallTable(timeoutMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const t = document.getElementById('village_troup_list');
+    if (t && t.querySelectorAll('input.call-unit-box-spear, input.call-unit-box-axe, input.call-unit-box-sword').length > 0) return t;
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return null;
+}
+
+async function injectSupportSendButton(troops, groupId, groupName) {
   if (document.getElementById('eos-send-support-btn')) return;
+
+  // Espera tabela renderizar antes de preencher
+  await waitForCallTable();
+  // Pequeno delay extra para o JS do TW inicializar handlers
+  await new Promise(r => setTimeout(r, 400));
+  // Usa a versão MAIN-world (acede ao jQuery do TW)
+  const filled = fillSupportInputsInPage(troops);
 
   const container = document.createElement('div');
   container.id = 'eos-send-support-container';
@@ -2438,7 +2669,9 @@ function injectSupportSendButton(troops, groupId, groupName) {
     + 'font-family:Segoe UI,sans-serif;color:#f0e0c8;max-width:320px';
 
   const title = document.createElement('div');
-  title.textContent = `⚔ Apoio requisitado (grupo: ${groupName})`;
+  title.textContent = filled
+    ? `⚔ Apoio requisitado (grupo: ${groupName}) — preenchido`
+    : `⚔ Apoio requisitado (grupo: ${groupName}) — ⚠ não preencheu`;
   title.style.cssText = 'font-size:12px;font-weight:700;color:#f0b878;margin-bottom:8px';
   container.appendChild(title);
 
@@ -2575,7 +2808,100 @@ registerRecipeFn('findAwayTable', () => {
   return null;
 });
 
-function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); autoFillSupportIfPending(); }
+function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); autoFillSupportIfPending(); checkPendingSupportRequests(); }
+
+// Verifica pedidos de apoio pendentes para o jogador atual e mostra banner persistente
+async function checkPendingSupportRequests() {
+  // Só em páginas de jogo
+  if (!/game\.php/.test(window.location.href)) return;
+  // Não mostrar na própria place&mode=call (já estamos a tratar)
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('screen') === 'place' && params.get('mode') === 'call') return;
+
+  async function poll() {
+    try {
+      const { token } = await getWorldStorage('token');
+      if (!token) return;
+      const res = await fetch(`${EOS_SERVER}/api/support-requests?mine=true`, {
+        headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store'
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const pending = (data.requests || []).filter(r => r.status === 'pending');
+      if (pending.length > 0) showSupportRequestBanner(pending);
+      else removeSupportRequestBanner();
+    } catch (_) {}
+  }
+  poll();
+  setInterval(poll, 5 * 60 * 1000);  // refresh a cada 5min
+}
+
+function removeSupportRequestBanner() {
+  const el = document.getElementById('eos-support-request-banner');
+  if (el) el.remove();
+}
+
+function showSupportRequestBanner(requests) {
+  let banner = document.getElementById('eos-support-request-banner');
+  if (banner) banner.remove();
+
+  banner = document.createElement('div');
+  banner.id = 'eos-support-request-banner';
+  banner.style.cssText = 'position:fixed;top:60px;right:20px;z-index:2147483646;'
+    + 'max-width:340px;background:linear-gradient(135deg,#3a1a08,#2a1208);'
+    + 'border:2px solid #e87830;border-radius:10px;padding:14px 16px;'
+    + 'box-shadow:0 6px 24px rgba(232,80,32,.5);'
+    + 'font-family:Segoe UI,sans-serif;color:#f0e0c8;'
+    + 'animation:eos-pulse 2s ease-in-out infinite';
+
+  if (!document.getElementById('eos-pulse-anim')) {
+    const st = document.createElement('style');
+    st.id = 'eos-pulse-anim';
+    st.textContent = '@keyframes eos-pulse { 0%,100%{box-shadow:0 6px 24px rgba(232,120,48,.4)} 50%{box-shadow:0 6px 28px rgba(232,120,48,.8)} }';
+    document.head.appendChild(st);
+  }
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:11px;font-weight:700;color:#f8c048;text-transform:uppercase;letterSpacing:1px;margin-bottom:8px';
+  title.textContent = `⚔ ${requests.length} pedido${requests.length>1?'s':''} de apoio`;
+  banner.appendChild(title);
+
+  for (const r of requests.slice(0, 3)) {
+    const item = document.createElement('div');
+    item.style.cssText = 'font-size:12px;line-height:1.4;margin-bottom:6px;color:#f0e0c8';
+    item.innerHTML = `A liderança pediu-te apoio à aldeia <b style="color:#f0b878">${r.target_village_coords}</b>`;
+    banner.appendChild(item);
+  }
+  if (requests.length > 3) {
+    const more = document.createElement('div');
+    more.style.cssText = 'font-size:11px;color:#a09080;margin-bottom:6px';
+    more.textContent = `... e mais ${requests.length - 3}`;
+    banner.appendChild(more);
+  }
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:6px;margin-top:8px';
+
+  const openBtn = document.createElement('button');
+  openBtn.textContent = 'Abrir painel';
+  openBtn.style.cssText = 'flex:1;padding:7px;background:linear-gradient(180deg,#4caf50,#2d8030);'
+    + 'color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer';
+  openBtn.onclick = () => {
+    chrome.runtime.sendMessage({ type: 'OPEN_PANEL' });
+  };
+  btnRow.appendChild(openBtn);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.title = 'Fechar (volta a aparecer no próximo refresh)';
+  closeBtn.style.cssText = 'padding:7px 10px;background:transparent;color:#a09080;'
+    + 'border:1px solid #5a4020;border-radius:5px;font-size:12px;cursor:pointer';
+  closeBtn.onclick = () => banner.remove();
+  btnRow.appendChild(closeBtn);
+
+  banner.appendChild(btnRow);
+  document.body.appendChild(banner);
+}
 if (document.readyState === 'loading') {
   // DOMContentLoaded é suficiente — não esperar por load (imagens/css)
   document.addEventListener('DOMContentLoaded', boot, { once: true });

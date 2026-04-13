@@ -463,6 +463,11 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     if (world) setTimeout(() => processReportQueue(world), 500);
   } else if (message.type === 'SYNC_SCHEDULES') {
     if (message.token && message.world) syncSchedules(message.world, message.token);
+  } else if (message.type === 'OPEN_PANEL') {
+    // Abre o popup da extensão
+    if (chrome.action?.openPopup) {
+      chrome.action.openPopup().catch(() => {});
+    }
   }
 });
 
