@@ -2443,9 +2443,26 @@ function fillSupportInputsInPage(troopsRequested) {
           headerInputs[i].checked = requestedUnits.indexOf(id) !== -1;
         }
 
-        // 2) seleciona todas as aldeias
-        var selAll = document.getElementById('place_call_select_all');
-        if (selAll) selAll.click();
+        // 2) seleciona todas as aldeias — tenta vários selectors
+        var selAll = document.getElementById('place_call_select_all')
+          || document.querySelector('a#select_all, a.select_all, .select_all_units, [onclick*="selectAll"]');
+        if (selAll) {
+          console.log('[EOS support MAIN] select-all encontrado:', selAll.id || selAll.className);
+          selAll.click();
+        } else {
+          // Fallback: master checkbox no header da coluna "selecionar todas"
+          var headerMaster = $('#village_troup_list thead input[type=checkbox], #village_troup_list tbody:first tr:first input[type=checkbox]').first();
+          if (headerMaster.length) {
+            console.log('[EOS support MAIN] master cb header:', headerMaster.attr('id'));
+            headerMaster.prop('checked', true).trigger('click').trigger('change');
+          }
+          // Fallback final: check todas as checkboxes de linha de aldeia
+          var villageCbs = $('#village_troup_list tbody tr input[type=checkbox]');
+          console.log('[EOS support MAIN] checkboxes aldeia encontradas:', villageCbs.length);
+          villageCbs.each(function(){
+            if (!this.checked) { this.checked = true; this.dispatchEvent(new Event('change', {bubbles:true})); }
+          });
+        }
 
         // 3) clear inputs visíveis
         $('#village_troup_list').find('input[type=number]:visible').val(0);
