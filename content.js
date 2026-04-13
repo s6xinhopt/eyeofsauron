@@ -1217,6 +1217,39 @@ function calcOffPop(troops) {
 }
 
 // Classifica tropas inimigas por força defensiva usando a config enemyBunkTypes
+// Classificação tática para o ícone do mapa:
+//   - 💀 skull  → pertencentes confirmado 0 há ≤5 dias (troops_wiped_at)
+//   - 🗡 axe    → pertencentes maioritariamente ofensivas (offPop > defPop)
+//   - 🛡 spear  → pertencentes maioritariamente defensivas (defPop >= offPop)
+// Devolve { title, bg, imgSrc, emoji } ou null se sem info útil
+function classifyEnemyTactical(report) {
+  if (!report) return null;
+  // 💀 Wiped
+  if (report.troops_wiped_at) {
+    const age = Date.now() - new Date(report.troops_wiped_at).getTime();
+    if (age <= 5 * 24 * 60 * 60 * 1000) {
+      return { title: 'Tropas pertencentes eliminadas', bg: '#2a1010', emoji: '💀' };
+    }
+  }
+  const outside = report.troops_outside;
+  if (!outside || Object.keys(outside).length === 0) return null;
+  const offPop = calcOffPop(outside);
+  const defPop = calcDefPop(outside);
+  if (offPop === 0 && defPop === 0) return null;
+  if (offPop > defPop) {
+    return {
+      title: `Pertencentes ofensivas (off pop ${offPop})`,
+      bg: '#5a2020',
+      imgSrc: '/graphic/unit/unit_axe.png',
+    };
+  }
+  return {
+    title: `Pertencentes defensivas (def pop ${defPop})`,
+    bg: '#20305a',
+    imgSrc: '/graphic/unit/unit_spear.png',
+  };
+}
+
 function classifyEnemyTroops(troopsOwned) {
   if (!troopsOwned) return { offSize: null, defSize: null, defColor: null, offPop: 0, defPop: 0 };
   const offPop = calcOffPop(troopsOwned);
@@ -1636,26 +1669,29 @@ function placeShields() {
       }
     }
 
-    // ── Ícone defensivo inimigo (bunk) ──
+    // ── Ícone tático inimigo: 💀 wiped | 🗡 off | 🛡 def ──
     if (!alreadyEnemy && hasEnemy && showEnemyBunks && !(hasTribe && mapVillageData.get(coordKey))) {
       const report = enemyReportsData.get(coordKey);
       if (report) {
-        const c1 = classifyEnemyTroops(report.troops);
-        const c2 = classifyEnemyTroops(report.troops_outside);
-        const best = (c1.defPop >= c2.defPop) ? c1 : c2;
-        if (best.defSize && best.defColor) {
+        const tactical = classifyEnemyTactical(report);
+        if (tactical) {
           const centerX = left + VILLAGE_W / 2;
-          const defIcon = document.createElement('div');
-          defIcon.dataset.eosEnemy = coordKey;
-          defIcon.title = `Inimigo: ${best.defSize} (${coordKey})`;
-          defIcon.className = animClass;
+          const icon = document.createElement('div');
+          icon.dataset.eosEnemy = coordKey;
+          icon.title = `${tactical.title} (${coordKey})`;
+          icon.className = animClass;
           const delay = (Math.random() * 2).toFixed(1);
-          defIcon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${centerX - ICON_SIZE / 2}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${best.defColor};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${best.defColor}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s`;
-          const sword = document.createElement('img');
-          sword.src = SWORD_IMG;
-          sword.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
-          defIcon.appendChild(sword);
-          parent.insertBefore(defIcon, domVillage);
+          icon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${centerX - ICON_SIZE / 2}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${tactical.bg};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${tactical.bg}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s;font-size:10px;line-height:1`;
+          if (tactical.imgSrc) {
+            const img = document.createElement('img');
+            img.src = tactical.imgSrc;
+            img.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
+            icon.appendChild(img);
+          } else if (tactical.emoji) {
+            icon.textContent = tactical.emoji;
+            icon.style.color = '#fff';
+          }
+          parent.insertBefore(icon, domVillage);
         }
       }
     }
@@ -2261,14 +2297,18 @@ function buildEnemyReportPayload(parsed, selfPlayerName, selfTribeName) {
 
   // Caso 1: Ataque nosso — defensor é o inimigo, guardamos "tropas na aldeia" (remaining)
   if (isAttackerSelf && !isDefenderSelf && defender.villageCoords) {
+    // Se matámos tudo na aldeia E não há pertencentes fora → marca wipe (objeto vazio = confirmado 0)
+    const remainingAllZero = defenderTroopsRemaining
+      && Object.values(defenderTroopsRemaining).every(v => !v || v === 0);
+    const troopsOutsideOut = remainingAllZero && !troopsOutside ? {} : troopsOutside;
     return {
       payload: {
         village_coords:    defender.villageCoords,
         village_name:      defender.villageName,
         owner_player_name: defender.playerName,
         owner_tribe_name:  defender.tribeName,
-        troops:            defenderTroopsRemaining,  // o que sobrou na aldeia
-        troops_outside:    troopsOutside,            // de spy report, se houver
+        troops:            defenderTroopsRemaining,
+        troops_outside:    troopsOutsideOut,
         buildings, wall_level: wallLevel,
         report_date:       reportDate,
       },
@@ -2288,16 +2328,19 @@ function buildEnemyReportPayload(parsed, selfPlayerName, selfTribeName) {
         if (alive > 0) survivors[unit] = alive;
       }
     }
+    // Se o atacante mandou tropas E matámos todas → {} (wiped), senão os sobreviventes
+    const sentAny = attackerTroopsSent && Object.values(attackerTroopsSent).some(v => v > 0);
+    const troopsOutsideOut = Object.keys(survivors).length > 0
+      ? survivors
+      : (sentAny ? {} : null);  // {} = confirmado vazio; null = desconhecido
     return {
       payload: {
         village_coords:    attacker.villageCoords,
         village_name:      attacker.villageName,
         owner_player_name: attacker.playerName,
         owner_tribe_name:  attacker.tribeName,
-        // "Tropas na aldeia" é null (não sabemos o que está lá agora)
         troops:            null,
-        // "Tropas pertencentes" = sobreviventes que voltaram para a aldeia
-        troops_outside:    Object.keys(survivors).length > 0 ? survivors : null,
+        troops_outside:    troopsOutsideOut,
         buildings: null, wall_level: null,
         report_date:       reportDate,
       },
