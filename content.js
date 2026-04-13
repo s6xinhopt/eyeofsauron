@@ -1851,7 +1851,7 @@ function placeShields() {
     if (!alreadyShield && hasTribe && showAllyBunks) {
       const v = mapVillageData.get(coordKey);
       if (v) {
-        const troops = v.troops_total || v.troops_own;
+        const troops = v.troops || v.troops_total || v.troops_own;
         if (troops) {
           const bt = classifyVillageForMap(troops);
           if (bt) {
@@ -1986,7 +1986,7 @@ function setupPopupObserver() {
 
     // Decide a fonte dos dados (tribo > relatório inimigo)
     const isEnemy = !v && !!enemyReport;
-    const t = v ? v.troops_total : enemyReport?.troops;
+    const t = v ? (v.troops || v.troops_total || v.troops_own) : enemyReport?.troops;
     // t pode ser {} (sabemos que é 0) para relatórios inimigos — ainda queremos mostrar
     if (!t && !(isEnemy && enemyReport.troops_outside)) return;
 
