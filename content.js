@@ -1188,8 +1188,12 @@ let bunksAnimated = true;
 let showSkullIcon  = true;
 let showAxeIcon    = true;
 let showSwordIcon  = true;
-let iconSize       = 18;   // 14-26px
+let iconSize       = 18;   // 14-28px
 let skullDays      = 5;    // 1-14 dias
+let mapAnimation   = 'float';  // 'none'|'float'|'pulse'|'shake'|'glow'|'spin'|'breathe'
+let colorSkull     = '#2a1010';
+let colorAxe       = '#c02020';
+let colorSword     = '#20305a';
 
 function makeShieldElement(color, size = 18) {
   const el = document.createElement('div');
@@ -1236,7 +1240,7 @@ function classifyEnemyTactical(report) {
   if (showSkullIcon && report.troops_wiped_at) {
     const age = Date.now() - new Date(report.troops_wiped_at).getTime();
     if (age <= skullDays * 24 * 60 * 60 * 1000) {
-      return { title: 'Tropas pertencentes eliminadas', bg: '#2a1010', emoji: '💀' };
+      return { title: 'Tropas pertencentes eliminadas', bg: colorSkull, emoji: '💀' };
     }
   }
   const outside = report.troops_outside;
@@ -1248,14 +1252,14 @@ function classifyEnemyTactical(report) {
     if (!showAxeIcon) return null;
     return {
       title: `Pertencentes ofensivas (off pop ${offPop})`,
-      bg: '#c02020',
+      bg: colorAxe,
       imgSrc: '/graphic/unit/unit_axe.png',
     };
   }
   if (!showSwordIcon) return null;
   return {
     title: `Pertencentes defensivas (def pop ${defPop})`,
-    bg: '#20305a',
+    bg: colorSword,
     imgSrc: '/graphic/unit/unit_sword.png',
   };
 }
@@ -1286,19 +1290,34 @@ function classifyEnemyTroops(troopsOwned) {
 }
 
 function injectShieldStyles() {
-  if (document.getElementById('eos-shield-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'eos-shield-styles';
+  let style = document.getElementById('eos-shield-styles');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'eos-shield-styles';
+    document.head.appendChild(style);
+  }
   style.textContent = `
-    @keyframes eos-float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-3px); }
-    }
-    .eos-shield-icon {
-      animation: eos-float 2s ease-in-out infinite;
-    }
+    @keyframes eos-float   { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    @keyframes eos-pulse   { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+    @keyframes eos-shake   { 0%,100% { transform: rotate(0deg); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+    @keyframes eos-glow    { 0%,100% { filter: brightness(1) drop-shadow(0 0 2px rgba(255,200,120,.4)); } 50% { filter: brightness(1.35) drop-shadow(0 0 6px rgba(255,180,80,.9)); } }
+    @keyframes eos-spin    { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+    @keyframes eos-breathe { 0%,100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.08); opacity: 1; } }
+
+    .eos-anim-float   { animation: eos-float   2s ease-in-out infinite; }
+    .eos-anim-pulse   { animation: eos-pulse   1.6s ease-in-out infinite; }
+    .eos-anim-shake   { animation: eos-shake   .6s ease-in-out infinite; }
+    .eos-anim-glow    { animation: eos-glow    1.8s ease-in-out infinite; }
+    .eos-anim-spin    { animation: eos-spin    3s linear infinite; }
+    .eos-anim-breathe { animation: eos-breathe 2.4s ease-in-out infinite; }
   `;
-  document.head.appendChild(style);
+}
+
+function animClassName() {
+  if (!bunksAnimated || mapAnimation === 'none') return '';
+  const map = { float:'eos-anim-float', pulse:'eos-anim-pulse', shake:'eos-anim-shake',
+                glow:'eos-anim-glow', spin:'eos-anim-spin', breathe:'eos-anim-breathe' };
+  return map[mapAnimation] || 'eos-anim-float';
 }
 
 let currentPlayerName = null;
@@ -1318,10 +1337,12 @@ async function initMapOverlay() {
   // Carrega definições guardadas
   const { eosBunkTypes, eosEnemyBunkTypes, eosMapEnabled: savedEnabled,
           eosShowAllyBunks, eosShowEnemyBunks, eosBunksAnimated,
-          eosShowSkull, eosShowAxe, eosShowSword, eosIconSize, eosSkullDays } = await getStorage(
+          eosShowSkull, eosShowAxe, eosShowSword, eosIconSize, eosSkullDays,
+          eosMapAnimation, eosColorSkull, eosColorAxe, eosColorSword } = await getStorage(
     'eosBunkTypes', 'eosEnemyBunkTypes', 'eosMapEnabled',
     'eosShowAllyBunks', 'eosShowEnemyBunks', 'eosBunksAnimated',
-    'eosShowSkull', 'eosShowAxe', 'eosShowSword', 'eosIconSize', 'eosSkullDays');
+    'eosShowSkull', 'eosShowAxe', 'eosShowSword', 'eosIconSize', 'eosSkullDays',
+    'eosMapAnimation', 'eosColorSkull', 'eosColorAxe', 'eosColorSword');
   if (savedEnabled === false) eosMapEnabled = false;
   if (Array.isArray(eosBunkTypes) && eosBunkTypes.length > 0) bunkTypes = eosBunkTypes;
   if (Array.isArray(eosEnemyBunkTypes) && eosEnemyBunkTypes.length > 0) enemyBunkTypes = eosEnemyBunkTypes;
@@ -1333,6 +1354,10 @@ async function initMapOverlay() {
   if (eosShowSword === false) showSwordIcon = false;
   if (typeof eosIconSize === 'number' && eosIconSize >= 12 && eosIconSize <= 28) iconSize = eosIconSize;
   if (typeof eosSkullDays === 'number' && eosSkullDays >= 1 && eosSkullDays <= 30) skullDays = eosSkullDays;
+  if (typeof eosMapAnimation === 'string') mapAnimation = eosMapAnimation;
+  if (typeof eosColorSkull === 'string') colorSkull = eosColorSkull;
+  if (typeof eosColorAxe   === 'string') colorAxe   = eosColorAxe;
+  if (typeof eosColorSword === 'string') colorSword = eosColorSword;
 
   // Observa o popup nativo do TW para injetar dados de tropas
   setupPopupObserver();
@@ -1521,6 +1546,39 @@ function buildSettingsPanelHTML() {
         </div>
       </div>
 
+      <!-- Animação + cores dos ícones táticos -->
+      <div style="margin-bottom:14px;padding:10px;background:#1a130e;border-radius:6px;border:1px solid #3a2a1a">
+        <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
+          Animação & Cores
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;align-items:center">
+          <div>
+            <div style="font-size:10px;color:#908070;margin-bottom:3px">Animação</div>
+            <select id="eos-anim-type" style="width:100%;padding:5px;background:#0e0c08;color:#f0e0c8;border:1px solid #3a2a1a;border-radius:4px;font-size:11px">
+              <option value="none"    ${mapAnimation==='none'?'selected':''}>Nenhuma</option>
+              <option value="float"   ${mapAnimation==='float'?'selected':''}>Flutuar ⇅</option>
+              <option value="pulse"   ${mapAnimation==='pulse'?'selected':''}>Pulsar ⊚</option>
+              <option value="shake"   ${mapAnimation==='shake'?'selected':''}>Abanar ↔</option>
+              <option value="glow"    ${mapAnimation==='glow'?'selected':''}>Brilhar ✦</option>
+              <option value="spin"    ${mapAnimation==='spin'?'selected':''}>Rodar ↻</option>
+              <option value="breathe" ${mapAnimation==='breathe'?'selected':''}>Respirar ◐</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#908070;margin-bottom:3px">💀 Caveira</div>
+            <input id="eos-color-skull" type="color" value="${colorSkull}" style="width:100%;height:28px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
+          </div>
+          <div>
+            <div style="font-size:10px;color:#908070;margin-bottom:3px">Axe</div>
+            <input id="eos-color-axe" type="color" value="${colorAxe}" style="width:100%;height:28px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
+          </div>
+          <div>
+            <div style="font-size:10px;color:#908070;margin-bottom:3px">Sword</div>
+            <input id="eos-color-sword" type="color" value="${colorSword}" style="width:100%;height:28px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
+          </div>
+        </div>
+      </div>
+
       <!-- Aliados e Inimigos lado a lado -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div>
@@ -1600,6 +1658,27 @@ function attachSettingsEvents(panel) {
     if (daysVal) daysVal.textContent = `${skullDays} dias`;
   });
 
+  // Animação: preview ao vivo
+  panel.querySelector('#eos-anim-type')?.addEventListener('change', (e) => {
+    mapAnimation = e.target.value;
+    injectShieldStyles();
+    // Re-renderiza para aplicar nova classe
+    document.querySelectorAll('[data-eos-shield],[data-eos-enemy],[data-eos-enemy-shield]').forEach(el => el.remove());
+    if (eosMapEnabled) placeShields();
+  });
+
+  // Color pickers — preview ao vivo
+  function bindColorPicker(id, setter) {
+    panel.querySelector('#' + id)?.addEventListener('input', (e) => {
+      setter(e.target.value);
+      document.querySelectorAll('[data-eos-enemy]').forEach(el => el.remove());
+      if (eosMapEnabled) placeShields();
+    });
+  }
+  bindColorPicker('eos-color-skull', v => colorSkull = v);
+  bindColorPicker('eos-color-axe',   v => colorAxe   = v);
+  bindColorPicker('eos-color-sword', v => colorSword = v);
+
   // Campos dos bunk cards (ally e enemy)
   panel.querySelectorAll('[data-section]').forEach(input => {
     const idx = parseInt(input.dataset.idx);
@@ -1628,6 +1707,10 @@ function attachSettingsEvents(panel) {
       eosShowSword: showSwordIcon,
       eosIconSize:  iconSize,
       eosSkullDays: skullDays,
+      eosMapAnimation: mapAnimation,
+      eosColorSkull:   colorSkull,
+      eosColorAxe:     colorAxe,
+      eosColorSword:   colorSword,
     });
     // Re-render: remove escudos e inimigos antigos e recria com novas definições
     document.querySelectorAll('[data-eos-shield],[data-eos-enemy]').forEach(el => el.remove());
@@ -1713,7 +1796,7 @@ function placeShields() {
   const VILLAGE_W = 53;
   const ICON_SIZE = iconSize;
   const ICON_GAP = 2;
-  const animClass = bunksAnimated ? 'eos-shield-icon' : '';
+  const animClass = animClassName();
 
   // Itera as aldeias visíveis no mapa
   for (const coordKey of Object.keys(villageIds)) {
