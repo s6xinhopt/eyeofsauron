@@ -1391,6 +1391,18 @@ async function initMapOverlay() {
   setInterval(() => fetchMapData(eosToken), 300000);
   setInterval(() => fetchEnemyReports(eosToken), 300000);
 
+  // Refetch quando a tab ganha foco (se última busca foi há > 60s)
+  let lastFetch = Date.now();
+  window.addEventListener('focus', async () => {
+    if (Date.now() - lastFetch < 60000) return;
+    lastFetch = Date.now();
+    await fetchMapData(eosToken);
+    await fetchEnemyReports(eosToken);
+    document.querySelectorAll('[data-eos-shield],[data-eos-enemy],[data-eos-enemy-shield]').forEach(el => el.remove());
+    shieldElements = {};
+    if (eosMapEnabled) placeShields();
+  });
+
 }
 
 // ── Painel de definições do mapa ──────────────────────────────────────────
