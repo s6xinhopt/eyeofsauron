@@ -1189,7 +1189,7 @@ let bunksAnimated = true;
 function makeShieldElement(color) {
   const el = document.createElement('div');
   el.textContent = '🛡️';
-  el.style.cssText = `font-size:9px;line-height:14px;width:14px;height:14px;text-align:center;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 0 4px ${color}88,0 1px 3px rgba(0,0,0,.6)`;
+  el.style.cssText = `font-size:11px;line-height:18px;width:18px;height:18px;text-align:center;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 0 4px ${color}88,0 1px 3px rgba(0,0,0,.6)`;
   return el;
 }
 
@@ -1241,7 +1241,7 @@ function classifyEnemyTactical(report) {
   if (offPop > defPop) {
     return {
       title: `Pertencentes ofensivas (off pop ${offPop})`,
-      bg: '#5a2020',
+      bg: '#c02020',
       imgSrc: '/graphic/unit/unit_axe.png',
     };
   }
@@ -1633,7 +1633,8 @@ function placeShields() {
 
   const SWORD_IMG = chrome.runtime.getURL('png/unit_sword.png');
   const VILLAGE_W = 53;
-  const ICON_SIZE = 14;
+  const ICON_SIZE = 18;
+  const ICON_GAP = 2;
   const animClass = bunksAnimated ? 'eos-shield-icon' : '';
 
   // Itera as aldeias visíveis no mapa
@@ -1675,42 +1676,44 @@ function placeShields() {
     // Inimigo = aldeia com relatório, que NÃO é da nossa tribo
     const isEnemyVillage = hasEnemy && !(hasTribe && mapVillageData.get(coordKey)) && enemyReportsData.get(coordKey);
 
-    // ── Escudo bunker inimigo (mesma visual do aliado, cor pelo enemyBunkType) ──
-    if (!alreadyEnemyShield && isEnemyVillage && showEnemyBunks) {
+    if (isEnemyVillage && showEnemyBunks) {
       const report = enemyReportsData.get(coordKey);
-      // Classifica pelo MAX entre troops (na aldeia) e troops_outside (pertencentes)
+      // Pré-calcula os dois ícones possíveis para centrar o par
       const c1 = classifyEnemyTroops(report.troops);
       const c2 = classifyEnemyTroops(report.troops_outside);
       const best = (c1.defPop >= c2.defPop) ? c1 : c2;
-      if (best.defSize && best.defColor) {
+      const wantShield = best.defSize && best.defColor;
+      const tactical = classifyEnemyTactical(report);
+      const wantTactical = !!tactical;
+
+      // Centragem: se ambos, pair width = 2*ICON + GAP, senão um único centrado
+      const pairWidth = (wantShield && wantTactical) ? (ICON_SIZE * 2 + ICON_GAP) : ICON_SIZE;
+      const startX = left + VILLAGE_W / 2 - pairWidth / 2;
+      const delay = (Math.random() * 2).toFixed(1);
+      const iconTop = top - ICON_SIZE + 4;
+
+      let cursor = startX;
+
+      if (!alreadyEnemyShield && wantShield) {
         const shield = makeShieldElement(best.defColor);
         shield.dataset.eosEnemyShield = coordKey;
         shield.title = `Inimigo bunker: ${best.defSize} (${coordKey})`;
         shield.className = animClass;
-        const delay = (Math.random() * 2).toFixed(1);
-        shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${left + 20}px;top:${top - 5}px;animation-delay:${delay}s`;
+        shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${cursor}px;top:${iconTop}px;animation-delay:${delay}s`;
         parent.insertBefore(shield, domVillage);
       }
-    }
+      if (wantShield) cursor += ICON_SIZE + ICON_GAP;
 
-    // ── Ícone tático inimigo: 💀 wiped | 🗡 off | 🛡 def (lado a lado do escudo) ──
-    if (!alreadyEnemy && isEnemyVillage && showEnemyBunks) {
-      const report = enemyReportsData.get(coordKey);
-      const tactical = classifyEnemyTactical(report);
-      if (tactical) {
-        // Se já existe escudo bunker, põe o tático à esquerda; senão centra
-        const hasBunkShield = !!parent.querySelector(`[data-eos-enemy-shield="${coordKey}"]`);
-        const iconLeft = hasBunkShield ? left + 4 : left + VILLAGE_W / 2 - ICON_SIZE / 2;
+      if (!alreadyEnemy && wantTactical) {
         const icon = document.createElement('div');
         icon.dataset.eosEnemy = coordKey;
         icon.title = `${tactical.title} (${coordKey})`;
         icon.className = animClass;
-        const delay = (Math.random() * 2).toFixed(1);
-        icon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${iconLeft}px;top:${top - ICON_SIZE + 4}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${tactical.bg};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${tactical.bg}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s;font-size:10px;line-height:1`;
+        icon.style.cssText = `position:absolute;pointer-events:none;z-index:20;left:${cursor}px;top:${iconTop}px;width:${ICON_SIZE}px;height:${ICON_SIZE}px;border-radius:50%;background:${tactical.bg};border:1px solid rgba(255,255,255,.6);box-shadow:0 0 3px ${tactical.bg}aa,0 1px 2px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation-delay:${delay}s;font-size:13px;line-height:1`;
         if (tactical.imgSrc) {
           const img = document.createElement('img');
           img.src = tactical.imgSrc;
-          img.style.cssText = 'width:9px;height:9px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
+          img.style.cssText = 'width:12px;height:12px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))';
           icon.appendChild(img);
         } else if (tactical.emoji) {
           icon.textContent = tactical.emoji;
