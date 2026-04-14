@@ -1754,11 +1754,16 @@ function attachSettingsEvents(panel) {
 }
 
 async function fetchMapData(token) {
+  console.log('[EOS mapData] fetching tribe villages...');
   try {
     const res = await fetch(`${EOS_SERVER}/api/village-troops?tribe=true`, {
       headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
     });
-    if (!res.ok) return;
+    console.log('[EOS mapData] HTTP', res.status);
+    if (!res.ok) {
+      console.warn('[EOS mapData] fetch falhou:', res.status, await res.text().catch(()=>''));
+      return;
+    }
     const { villages } = await res.json();
     mapVillageData = new Map();
     for (const v of (villages || [])) {
@@ -1766,8 +1771,11 @@ async function fetchMapData(token) {
         mapVillageData.set(v.village_coords, v);
       }
     }
+    console.log('[EOS mapData] aldeias carregadas:', mapVillageData.size, '| 560|443?', mapVillageData.get('560|443') || 'NÃO EXISTE');
     placeShields();
-  } catch (_) {}
+  } catch (e) {
+    console.error('[EOS mapData] erro:', e);
+  }
 }
 
 async function fetchEnemyReports(token) {
