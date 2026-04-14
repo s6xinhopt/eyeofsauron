@@ -1207,6 +1207,8 @@ let mapAnimation   = 'float';  // 'none'|'float'|'pulse'|'shake'|'glow'|'spin'|'
 let colorSkull     = '#2a1010';
 let colorAxe       = '#c02020';
 let colorSword     = '#20305a';
+let streamerMode   = false;
+const STREAMER_SHIELD_COLOR = '#5a5a5a';  // cinza neutro para ocultar tier
 
 function makeShieldElement(color, size = 18) {
   const el = document.createElement('div');
@@ -1351,11 +1353,13 @@ async function initMapOverlay() {
   const { eosBunkTypes, eosEnemyBunkTypes, eosMapEnabled: savedEnabled,
           eosShowAllyBunks, eosShowEnemyBunks, eosBunksAnimated,
           eosShowSkull, eosShowAxe, eosShowSword, eosIconSize, eosSkullDays,
-          eosMapAnimation, eosColorSkull, eosColorAxe, eosColorSword } = await getStorage(
+          eosMapAnimation, eosColorSkull, eosColorAxe, eosColorSword,
+          eosStreamerMode } = await getStorage(
     'eosBunkTypes', 'eosEnemyBunkTypes', 'eosMapEnabled',
     'eosShowAllyBunks', 'eosShowEnemyBunks', 'eosBunksAnimated',
     'eosShowSkull', 'eosShowAxe', 'eosShowSword', 'eosIconSize', 'eosSkullDays',
-    'eosMapAnimation', 'eosColorSkull', 'eosColorAxe', 'eosColorSword');
+    'eosMapAnimation', 'eosColorSkull', 'eosColorAxe', 'eosColorSword',
+    'eosStreamerMode');
   if (savedEnabled === false) eosMapEnabled = false;
   if (Array.isArray(eosBunkTypes) && eosBunkTypes.length > 0) bunkTypes = eosBunkTypes;
   if (Array.isArray(eosEnemyBunkTypes) && eosEnemyBunkTypes.length > 0) enemyBunkTypes = eosEnemyBunkTypes;
@@ -1371,6 +1375,7 @@ async function initMapOverlay() {
   if (typeof eosColorSkull === 'string') colorSkull = eosColorSkull;
   if (typeof eosColorAxe   === 'string') colorAxe   = eosColorAxe;
   if (typeof eosColorSword === 'string') colorSword = eosColorSword;
+  if (eosStreamerMode === true) streamerMode = true;
 
   // Observa o popup nativo do TW para injetar dados de tropas
   setupPopupObserver();
@@ -1875,9 +1880,9 @@ function placeShields() {
         if (troops) {
           const bt = classifyVillageForMap(troops);
           if (bt) {
-            const shield = makeShieldElement(bt.color, ICON_SIZE);
+            const shield = makeShieldElement(streamerMode ? STREAMER_SHIELD_COLOR : bt.color, ICON_SIZE);
             shield.dataset.eosShield = coordKey;
-            shield.title = bt.name + ' (' + coordKey + ')';
+            shield.title = streamerMode ? `Aldeia (${coordKey})` : (bt.name + ' (' + coordKey + ')');
             shield.className = animClass;
             const delay = (Math.random() * 2).toFixed(1);
             const shieldLeft = left + VILLAGE_W / 2 - ICON_SIZE / 2;
@@ -1899,7 +1904,8 @@ function placeShields() {
       const c2 = classifyEnemyTroops(report.troops_outside);
       const best = (c1.defPop >= c2.defPop) ? c1 : c2;
       const wantShield = best.defSize && best.defColor;
-      const tactical = classifyEnemyTactical(report);
+      // Em streamer mode, esconder ícones táticos (revelariam info tática)
+      const tactical = streamerMode ? null : classifyEnemyTactical(report);
       const wantTactical = !!tactical;
 
       // Centragem: se ambos, pair width = 2*ICON + GAP, senão um único centrado
@@ -1911,9 +1917,9 @@ function placeShields() {
       let cursor = startX;
 
       if (!alreadyEnemyShield && wantShield) {
-        const shield = makeShieldElement(best.defColor, ICON_SIZE);
+        const shield = makeShieldElement(streamerMode ? STREAMER_SHIELD_COLOR : best.defColor, ICON_SIZE);
         shield.dataset.eosEnemyShield = coordKey;
-        shield.title = `Inimigo bunker: ${best.defSize} (${coordKey})`;
+        shield.title = streamerMode ? `Aldeia (${coordKey})` : `Inimigo bunker: ${best.defSize} (${coordKey})`;
         shield.className = animClass;
         shield.style.cssText += `;position:absolute;pointer-events:none;z-index:20;left:${cursor}px;top:${iconTop}px;animation-delay:${delay}s`;
         parent.insertBefore(shield, domVillage);
@@ -2024,10 +2030,10 @@ function setupPopupObserver() {
 
     // Badge do tipo
     let badgeHtml = '';
-    if (isEnemy) {
+    if (isEnemy && !streamerMode) {
       badgeHtml = `<div style="display:inline-block;background:#c04040;color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-bottom:3px">INIMIGO</div> `;
     }
-    if (bt) {
+    if (bt && !streamerMode) {
       badgeHtml += `<div style="display:inline-block;background:${bt.color};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-bottom:3px">${bt.name}</div>`;
     }
     if (badgeHtml) badgeHtml += '<br>';
@@ -2042,7 +2048,11 @@ function setupPopupObserver() {
       html += '</tr><tr>';
       for (const u of units) {
         const val = (troopsObj && troopsObj[u]) || 0;
-        html += `<td style="text-align:center;font-size:13px;font-weight:700;color:${val > 0 ? '#000' : '#bbb'};padding:2px">${val > 0 ? fmtK(val) : '-'}</td>`;
+        // Streamer mode: mascara números com pontos (••••)
+        const displayVal = streamerMode
+          ? (val > 0 ? '••••' : '-')
+          : (val > 0 ? fmtK(val) : '-');
+        html += `<td style="text-align:center;font-size:13px;font-weight:700;color:${val > 0 ? '#000' : '#bbb'};padding:2px">${displayVal}</td>`;
       }
       html += '</tr></table>';
       return html;
@@ -3127,6 +3137,16 @@ window.addEventListener('message', (event) => {
       getWorldStorage('token').then(({ token }) => {
         if (token) chrome.runtime.sendMessage({ type: 'SYNC_SCHEDULES', token, world: CURRENT_WORLD });
       });
+      return;
+    }
+
+    if (event.data.type === 'EOS_SET_STREAMER_MODE') {
+      const v = !!event.data.value;
+      streamerMode = v;
+      chrome.storage.local.set({ eosStreamerMode: v });
+      // Re-render mapa imediato
+      document.querySelectorAll('[data-eos-shield],[data-eos-enemy],[data-eos-enemy-shield]').forEach(el => el.remove());
+      if (eosMapEnabled) placeShields();
       return;
     }
 
