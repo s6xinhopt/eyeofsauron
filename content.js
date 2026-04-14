@@ -1790,10 +1790,15 @@ async function fetchEnemyReports(token) {
     }
     const { reports } = await res.json();
     enemyReportsData = new Map();
+    let wipedCount = 0;
     for (const r of (reports || [])) {
       if (r.village_coords) enemyReportsData.set(r.village_coords, r);
+      if (r.troops_wiped_at) wipedCount++;
     }
-    console.log('[EOS] enemy reports carregados:', enemyReportsData.size);
+    console.log('[EOS] enemy reports carregados:', enemyReportsData.size, '| com wipe:', wipedCount);
+    // Dump de alguns wipe reports para debug
+    const wiped = (reports || []).filter(r => r.troops_wiped_at).slice(0, 5);
+    if (wiped.length) console.log('[EOS wiped sample]', wiped);
     placeShields();
   } catch (e) {
     console.warn('[EOS] fetchEnemyReports erro:', e);
@@ -2617,6 +2622,8 @@ function injectSyncReportButton() {
       const result = buildEnemyReportPayload(parsed, playerName, tribeName);
       if (result.skip) throw new Error(result.skip);
       const { payload, reason } = result;
+      console.log('[EOS report POST] payload:', payload, '| reason:', reason,
+        '| troops_outside is {}?', payload.troops_outside && Object.keys(payload.troops_outside).length === 0);
 
       const res = await fetch(`${EOS_SERVER}/api/enemy-reports`, {
         method: 'POST',
