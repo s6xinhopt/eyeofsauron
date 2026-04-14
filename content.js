@@ -2576,6 +2576,13 @@ function buildEnemyReportPayload(parsed, selfPlayerName, selfTribeName) {
     const troopsOutsideOut = Object.keys(survivors).length > 0
       ? survivors
       : (sentAny ? {} : null);  // {} = confirmado vazio; null = desconhecido
+    // Tropas do inimigo que NÓS matámos (para subtração cumulativa no servidor)
+    const killed: Record<string, number> = {};
+    if (attackerTroopsLosses) {
+      for (const [u, n] of Object.entries(attackerTroopsLosses)) {
+        if ((n as number) > 0) killed[u] = n as number;
+      }
+    }
     return {
       payload: {
         village_coords:    attacker.villageCoords,
@@ -2584,6 +2591,7 @@ function buildEnemyReportPayload(parsed, selfPlayerName, selfTribeName) {
         owner_tribe_name:  attacker.tribeName,
         troops:            null,
         troops_outside:    troopsOutsideOut,
+        troops_killed:     Object.keys(killed).length > 0 ? killed : null,
         buildings: null, wall_level: null,
         report_date:       reportDate,
       },
