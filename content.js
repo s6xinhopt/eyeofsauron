@@ -1797,7 +1797,10 @@ async function fetchEnemyReports(token) {
       if (r.troops_wiped_at) wipedCount++;
     }
     console.log('[EOS] enemy reports carregados:', enemyReportsData.size, '| com wipe:', wipedCount);
-    // Dump de alguns wipe reports para debug
+    // Dump específico para 547|453 — se ainda estiver a falhar
+    const v547 = (reports || []).find(r => r.village_coords === '547|453');
+    console.log('[EOS debug 547|453]', v547);
+    // Wiped samples
     const wiped = (reports || []).filter(r => r.troops_wiped_at).slice(0, 5);
     if (wiped.length) console.log('[EOS wiped sample]', wiped);
     placeShields();
