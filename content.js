@@ -2577,10 +2577,10 @@ function buildEnemyReportPayload(parsed, selfPlayerName, selfTribeName) {
       ? survivors
       : (sentAny ? {} : null);  // {} = confirmado vazio; null = desconhecido
     // Tropas do inimigo que NÓS matámos (para subtração cumulativa no servidor)
-    const killed: Record<string, number> = {};
+    const killed = {};
     if (attackerTroopsLosses) {
       for (const [u, n] of Object.entries(attackerTroopsLosses)) {
-        if ((n as number) > 0) killed[u] = n as number;
+        if (n > 0) killed[u] = n;
       }
     }
     return {
