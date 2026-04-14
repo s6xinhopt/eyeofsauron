@@ -1781,8 +1781,9 @@ async function fetchMapData(token) {
 
 async function fetchEnemyReports(token) {
   try {
-    const res = await fetch(`${EOS_SERVER}/api/enemy-reports`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
+    const res = await fetch(`${EOS_SERVER}/api/enemy-reports?_=${Date.now()}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version },
+      cache: 'no-store',
     });
     if (!res.ok) {
       console.warn('[EOS] fetchEnemyReports falhou:', res.status, await res.text().catch(() => ''));
