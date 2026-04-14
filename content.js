@@ -1789,7 +1789,9 @@ async function fetchEnemyReports(token) {
       console.warn('[EOS] fetchEnemyReports falhou:', res.status, await res.text().catch(() => ''));
       return;
     }
-    const { reports } = await res.json();
+    const respData = await res.json();
+    console.log('[EOS server version]', respData._v || 'UNKNOWN', '| wiped_server:', respData._wipedCount);
+    const { reports } = respData;
     enemyReportsData = new Map();
     let wipedCount = 0;
     for (const r of (reports || [])) {
