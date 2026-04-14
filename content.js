@@ -1756,8 +1756,9 @@ function attachSettingsEvents(panel) {
 async function fetchMapData(token) {
   console.log('[EOS mapData] fetching tribe villages...');
   try {
-    const res = await fetch(`${EOS_SERVER}/api/village-troops?tribe=true`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version }
+    const res = await fetch(`${EOS_SERVER}/api/village-troops?tribe=true&_=${Date.now()}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-EOS-Version': chrome.runtime.getManifest().version },
+      cache: 'no-store',
     });
     console.log('[EOS mapData] HTTP', res.status);
     if (!res.ok) {
