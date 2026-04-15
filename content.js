@@ -1468,10 +1468,11 @@ function buildSettingsPanelHTML() {
   const toggleBg = eosMapEnabled ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
   const unitPng = (u) => chrome.runtime.getURL(`png/unit_${u}.png`);
 
-  function miniToggle(id, active) {
-    const bg = active ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
+  function miniToggle(id, active, color) {
+    const onBg = color ? color : 'linear-gradient(135deg,#e87830,#c06020)';
+    const bg = active ? onBg : '#302820';
     const left = active ? '19px' : '3px';
-    return `<button id="${id}" data-active="${active}" style="width:36px;height:20px;border-radius:10px;border:none;cursor:pointer;background:${bg};position:relative;transition:background .3s">
+    return `<button id="${id}" data-active="${active}" data-color="${color || ''}" style="width:36px;height:20px;border-radius:10px;border:none;cursor:pointer;background:${bg};position:relative;transition:background .3s">
       <div style="width:14px;height:14px;border-radius:50%;background:#f4e8d0;position:absolute;top:3px;left:${left};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>
     </button>`;
   }
@@ -1543,15 +1544,15 @@ function buildSettingsPanelHTML() {
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#2a1010;border-radius:4px">
             <span style="font-size:11px;color:#f0e0c8">💀 Caveira</span>
-            ${miniToggle('eos-toggle-skull', showSkullIcon)}
+            ${miniToggle('eos-toggle-skull', showSkullIcon, colorSkull)}
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#2a1010;border-radius:4px">
             <span style="font-size:11px;color:#f0e0c8"><img src="/graphic/unit/unit_axe.png" style="width:13px;height:13px;vertical-align:middle"> Ofensivo</span>
-            ${miniToggle('eos-toggle-axe', showAxeIcon)}
+            ${miniToggle('eos-toggle-axe', showAxeIcon, colorAxe)}
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#10132a;border-radius:4px">
             <span style="font-size:11px;color:#f0e0c8"><img src="/graphic/unit/unit_sword.png" style="width:13px;height:13px;vertical-align:middle"> Defensivo</span>
-            ${miniToggle('eos-toggle-sword', showSwordIcon)}
+            ${miniToggle('eos-toggle-sword', showSwordIcon, colorSword)}
           </div>
         </div>
       </div>
@@ -1670,7 +1671,9 @@ function attachSettingsEvents(panel) {
       const newVal = !getter();
       setter(newVal);
       btn.setAttribute('data-active', String(newVal));
-      btn.style.background = newVal ? 'linear-gradient(135deg,#e87830,#c06020)' : '#302820';
+      const customColor = btn.dataset.color;
+      const onBg = customColor ? customColor : 'linear-gradient(135deg,#e87830,#c06020)';
+      btn.style.background = newVal ? onBg : '#302820';
       btn.querySelector('div').style.left = newVal ? '19px' : '3px';
       liveRerender();
     });
@@ -1705,16 +1708,23 @@ function attachSettingsEvents(panel) {
     liveRerender();
   });
 
-  // Color pickers — preview ao vivo
-  function bindColorPicker(id, setter) {
+  // Color pickers — preview ao vivo + atualiza cor do toggle correspondente
+  function bindColorPicker(id, setter, toggleId) {
     panel.querySelector('#' + id)?.addEventListener('input', (e) => {
-      setter(e.target.value);
+      const newColor = e.target.value;
+      setter(newColor);
+      // Se o toggle correspondente está ativo, atualiza a cor de fundo
+      const btn = panel.querySelector('#' + toggleId);
+      if (btn) {
+        btn.dataset.color = newColor;
+        if (btn.dataset.active === 'true') btn.style.background = newColor;
+      }
       liveRerender();
     });
   }
-  bindColorPicker('eos-color-skull', v => colorSkull = v);
-  bindColorPicker('eos-color-axe',   v => colorAxe   = v);
-  bindColorPicker('eos-color-sword', v => colorSword = v);
+  bindColorPicker('eos-color-skull', v => colorSkull = v, 'eos-toggle-skull');
+  bindColorPicker('eos-color-axe',   v => colorAxe   = v, 'eos-toggle-axe');
+  bindColorPicker('eos-color-sword', v => colorSword = v, 'eos-toggle-sword');
 
   // Campos dos bunk cards (ally e enemy)
   panel.querySelectorAll('[data-section]').forEach(input => {
