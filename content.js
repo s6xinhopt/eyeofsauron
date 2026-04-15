@@ -1453,10 +1453,10 @@ function toggleMapSettingsPanel() {
 
   const panel = document.createElement('div');
   panel.id = 'eos-map-settings-panel';
-  panel.style.cssText = `width:720px;max-width:92vw;max-height:80vh;
-    background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502040;border-radius:10px;
+  panel.style.cssText = `width:1060px;max-width:96vw;max-height:90vh;
+    background:linear-gradient(135deg,#2a2018,#1e1a14);border:1px solid #e8502060;border-radius:14px;
     font-size:11px;color:#f0e0c8;display:flex;flex-direction:column;overflow:hidden;
-    box-shadow:0 12px 48px rgba(0,0,0,0.9),0 0 0 1px #e8502020`;
+    box-shadow:0 20px 60px rgba(0,0,0,0.95),0 0 0 1px #e8502030,inset 0 1px 0 rgba(255,180,80,.08)`;
 
   panel.innerHTML = `<style>.eos-scroll::-webkit-scrollbar{width:5px}.eos-scroll::-webkit-scrollbar-track{background:#1a1610;border-radius:3px}.eos-scroll::-webkit-scrollbar-thumb{background:#e8502040;border-radius:3px}.eos-scroll::-webkit-scrollbar-thumb:hover{background:#e8783060}</style>` + buildSettingsPanelHTML();
   overlay.appendChild(panel);
@@ -1478,153 +1478,189 @@ function buildSettingsPanelHTML() {
   }
 
   function bunkCardHTML(bt, i, section) {
+    const disabled = !bt.enabled;
     return `
-      <div style="background:linear-gradient(135deg,#322a22,#28221c);border:1px solid #e8502025;border-left:3px solid ${bt.color};
-        border-radius:6px;padding:10px 12px;margin-bottom:8px">
+      <div style="background:linear-gradient(135deg,#2c241c,#1f1912);border:1px solid #e8502020;
+        border-left:3px solid ${bt.color};border-radius:8px;padding:10px 12px;margin-bottom:8px;
+        opacity:${disabled ? '.55' : '1'};transition:opacity .2s">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="color" value="${bt.color}" data-field="color" data-idx="${i}" data-section="${section}"
-              style="width:24px;height:24px;border:1px solid #e8502030;border-radius:4px;cursor:pointer;background:#1a1a1a;padding:1px">
-            <span style="color:#f0e0c8;font-size:13px;font-weight:700">${bt.name}</span>
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+            <div style="position:relative">
+              <input type="color" value="${bt.color}" data-field="color" data-idx="${i}" data-section="${section}"
+                style="width:26px;height:26px;border:1.5px solid ${bt.color}80;border-radius:50%;cursor:pointer;background:transparent;padding:0;
+                box-shadow:0 0 8px ${bt.color}40">
+            </div>
+            <input type="text" value="${bt.name}" data-field="name" data-idx="${i}" data-section="${section}"
+              style="flex:1;min-width:0;background:transparent;border:none;color:#f0e0c8;font-size:13px;font-weight:700;outline:none;padding:2px 0;
+              border-bottom:1px solid transparent;transition:border-color .2s"
+              onfocus="this.style.borderColor='${bt.color}'" onblur="this.style.borderColor='transparent'">
           </div>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#b09878">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10px;color:#b09878;font-weight:600;margin-left:8px">
             <input type="checkbox" ${bt.enabled ? 'checked' : ''} data-field="enabled" data-idx="${i}" data-section="${section}"
-              style="accent-color:#e8a030;cursor:pointer">
+              style="accent-color:${bt.color};cursor:pointer;width:14px;height:14px">
             Ativo
           </label>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="display:flex;align-items:center;gap:3px">
-            <img src="${unitPng('spear')}" style="width:18px;height:18px;opacity:.7">
-            <img src="${unitPng('sword')}" style="width:18px;height:18px;opacity:.7">
-            <img src="${unitPng('heavy')}" style="width:18px;height:18px;opacity:.7">
+          <div style="display:flex;align-items:center;gap:2px;opacity:.8">
+            <img src="${unitPng('spear')}" style="width:16px;height:16px" title="Lanceiro">
+            <img src="${unitPng('sword')}" style="width:16px;height:16px" title="Espadachim">
+            <img src="${unitPng('heavy')}" style="width:16px;height:16px" title="Pesado">
           </div>
-          <span style="font-size:12px;color:#c0b090;font-weight:600">Pop Def ≥</span>
+          <span style="font-size:10px;color:#a08868;text-transform:uppercase;letter-spacing:1;font-weight:700">Pop Def ≥</span>
           <input type="number" value="${bt.minDefPop || 0}" data-field="minDefPop" data-idx="${i}" data-section="${section}" min="0" step="1000"
-            style="width:75px;background:#141010;border:1px solid #e8502020;border-radius:4px;color:#f0e0c8;
-            font-size:13px;padding:4px 6px;outline:none;text-align:center;font-weight:700">
+            style="flex:1;background:#0e0c08;border:1px solid ${bt.color}30;border-radius:5px;color:${bt.color};
+            font-size:13px;padding:5px 8px;outline:none;text-align:right;font-weight:800;font-variant-numeric:tabular-nums">
         </div>
       </div>
     `;
   }
 
+  // Helper: label uppercase subtil para secções
+  const sectionLabel = (txt, color = '#f0b878') =>
+    `<div style="font-size:10px;color:${color};text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;font-weight:800;display:flex;align-items:center;gap:8px">
+      <span style="width:12px;height:2px;background:${color};border-radius:1px"></span>${txt}
+    </div>`;
+
   let html = `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid #e8502030;flex-shrink:0">
-      <span style="font-size:13px;font-weight:700;color:#f8c850;letter-spacing:.5px;text-transform:uppercase">Definições do Mapa</span>
-      <button id="eos-map-toggle" style="width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;
-        background:${toggleBg};position:relative;transition:background .3s">
-        <div style="width:18px;height:18px;border-radius:50%;background:#f4e8d0;position:absolute;top:3px;
-          left:${eosMapEnabled ? '23px' : '3px'};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>
-      </button>
+    <!-- Header elegante -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;
+      border-bottom:1px solid #e8502030;flex-shrink:0;
+      background:linear-gradient(180deg,rgba(232,120,48,.08),transparent)">
+      <div>
+        <div style="font-size:17px;font-weight:800;color:#f8c850;letter-spacing:.5px;
+          background:linear-gradient(90deg,#f8c850,#e87830);-webkit-background-clip:text;-webkit-text-fill-color:transparent">
+          👁 Definições do Mapa
+        </div>
+        <div style="font-size:10px;color:#8a7860;margin-top:2px">Personaliza escudos, ícones táticos, animações e classificação</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;font-weight:700">
+          ${eosMapEnabled ? 'Ativado' : 'Desativado'}
+        </span>
+        <button id="eos-map-toggle" style="width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;
+          background:${toggleBg};position:relative;transition:background .3s;
+          box-shadow:${eosMapEnabled ? '0 0 12px rgba(232,120,48,.35)' : 'none'}">
+          <div style="width:22px;height:22px;border-radius:50%;background:#f4e8d0;position:absolute;top:3px;
+            left:${eosMapEnabled ? '27px' : '3px'};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>
+        </button>
+      </div>
     </div>
 
-    <div style="flex:1;overflow-y:auto;padding:14px" class="eos-scroll">
+    <div style="flex:1;overflow-y:auto;padding:18px 22px" class="eos-scroll">
 
-      <!-- Flags gerais (3 colunas) -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
-          <span style="font-size:11px;color:#f0e0c8">Bunks aliados</span>
-          ${miniToggle('eos-toggle-ally', showAllyBunks)}
+      <!-- ═══ TOP ROW — 3 COLUNAS: Visibilidade | Táticos | Aparência ═══ -->
+      <div style="display:grid;grid-template-columns:1fr 1.3fr 1.5fr;gap:14px;margin-bottom:16px">
+
+        <!-- COL 1: Visibilidade -->
+        <div style="padding:14px;background:linear-gradient(160deg,#1f1812,#1a140e);border-radius:10px;border:1px solid #e8502020">
+          ${sectionLabel('Visibilidade')}
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
+              <span style="font-size:11px;color:#e0d0b8;font-weight:600">🛡 Aliados</span>
+              ${miniToggle('eos-toggle-ally', showAllyBunks)}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
+              <span style="font-size:11px;color:#e0d0b8;font-weight:600">⚔ Inimigos</span>
+              ${miniToggle('eos-toggle-enemy', showEnemyBunks)}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
+              <span style="font-size:11px;color:#e0d0b8;font-weight:600">✨ Animados</span>
+              ${miniToggle('eos-toggle-anim', bunksAnimated)}
+            </div>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
-          <span style="font-size:11px;color:#f0e0c8">Bunks inimigos</span>
-          ${miniToggle('eos-toggle-enemy', showEnemyBunks)}
+
+        <!-- COL 2: Ícones Táticos Inimigos -->
+        <div style="padding:14px;background:linear-gradient(160deg,#1f1812,#1a140e);border-radius:10px;border:1px solid #e8502020">
+          ${sectionLabel('Ícones Táticos Inimigos')}
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#14100a;border-radius:6px;border:1px solid ${colorSkull}40">
+              <span style="font-size:11px;color:#e0d0b8;font-weight:600;display:flex;align-items:center;gap:8px">
+                <span style="width:22px;height:22px;border-radius:50%;background:${colorSkull};display:inline-flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 0 6px ${colorSkull}80">💀</span>
+                Caveira (exército morto)
+              </span>
+              ${miniToggle('eos-toggle-skull', showSkullIcon, colorSkull)}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#14100a;border-radius:6px;border:1px solid ${colorAxe}40">
+              <span style="font-size:11px;color:#e0d0b8;font-weight:600;display:flex;align-items:center;gap:8px">
+                <span style="width:22px;height:22px;border-radius:50%;background:${colorAxe};display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 6px ${colorAxe}80"><img src="/graphic/unit/unit_axe.png" style="width:13px;height:13px"></span>
+                Ofensivo (pertencentes off)
+              </span>
+              ${miniToggle('eos-toggle-axe', showAxeIcon, colorAxe)}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:#14100a;border-radius:6px;border:1px solid ${colorSword}40">
+              <span style="font-size:11px;color:#e0d0b8;font-weight:600;display:flex;align-items:center;gap:8px">
+                <span style="width:22px;height:22px;border-radius:50%;background:${colorSword};display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 6px ${colorSword}80"><img src="/graphic/unit/unit_sword.png" style="width:13px;height:13px"></span>
+                Defensivo (pertencentes def)
+              </span>
+              ${miniToggle('eos-toggle-sword', showSwordIcon, colorSword)}
+            </div>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1f1812;border-radius:6px">
-          <span style="font-size:11px;color:#f0e0c8">Animados</span>
-          ${miniToggle('eos-toggle-anim', bunksAnimated)}
+
+        <!-- COL 3: Aparência -->
+        <div style="padding:14px;background:linear-gradient(160deg,#1f1812,#1a140e);border-radius:10px;border:1px solid #e8502020">
+          ${sectionLabel('Aparência')}
+
+          <div style="padding:10px;background:#14100a;border-radius:6px;border:1px solid #2a2018;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:10px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700">Tamanho</span>
+              <span id="eos-icon-size-val" style="font-size:11px;color:#f0b878;font-weight:700">${iconSize}px</span>
+            </div>
+            <input id="eos-icon-size" type="range" min="12" max="28" step="1" value="${iconSize}"
+              style="width:100%;accent-color:#e87830">
+          </div>
+
+          <div style="padding:10px;background:#14100a;border-radius:6px;border:1px solid #2a2018;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:10px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700">Validade caveira</span>
+              <span id="eos-skull-days-val" style="font-size:11px;color:#f0b878;font-weight:700">${skullDays} dias</span>
+            </div>
+            <input id="eos-skull-days" type="range" min="1" max="14" step="1" value="${skullDays}"
+              style="width:100%;accent-color:#e87830">
+          </div>
+
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px;padding:10px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
+            <div>
+              <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">Animação</div>
+              <select id="eos-anim-type" style="width:100%;padding:5px;background:#0e0c08;color:#f0e0c8;border:1px solid #3a2a1a;border-radius:4px;font-size:10px;cursor:pointer">
+                <option value="none"    ${mapAnimation==='none'?'selected':''}>✕ Nenhuma</option>
+                <option value="float"   ${mapAnimation==='float'?'selected':''}>⇅ Flutuar</option>
+                <option value="pulse"   ${mapAnimation==='pulse'?'selected':''}>⊚ Pulsar</option>
+                <option value="shake"   ${mapAnimation==='shake'?'selected':''}>↔ Abanar</option>
+                <option value="glow"    ${mapAnimation==='glow'?'selected':''}>✦ Brilhar</option>
+                <option value="spin"    ${mapAnimation==='spin'?'selected':''}>↻ Rodar</option>
+                <option value="breathe" ${mapAnimation==='breathe'?'selected':''}>◐ Respirar</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">💀</div>
+              <input id="eos-color-skull" type="color" value="${colorSkull}" style="width:100%;height:26px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
+            </div>
+            <div>
+              <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">Axe</div>
+              <input id="eos-color-axe" type="color" value="${colorAxe}" style="width:100%;height:26px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
+            </div>
+            <div>
+              <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">Sword</div>
+              <input id="eos-color-sword" type="color" value="${colorSword}" style="width:100%;height:26px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Ícones táticos inimigos -->
-      <div style="margin-bottom:10px;padding:10px;background:#1a130e;border-radius:6px;border:1px solid #3a2a1a">
-        <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
-          Ícones táticos inimigos
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#2a1010;border-radius:4px">
-            <span style="font-size:11px;color:#f0e0c8">💀 Caveira</span>
-            ${miniToggle('eos-toggle-skull', showSkullIcon, colorSkull)}
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#2a1010;border-radius:4px">
-            <span style="font-size:11px;color:#f0e0c8"><img src="/graphic/unit/unit_axe.png" style="width:13px;height:13px;vertical-align:middle"> Ofensivo</span>
-            ${miniToggle('eos-toggle-axe', showAxeIcon, colorAxe)}
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#10132a;border-radius:4px">
-            <span style="font-size:11px;color:#f0e0c8"><img src="/graphic/unit/unit_sword.png" style="width:13px;height:13px;vertical-align:middle"> Defensivo</span>
-            ${miniToggle('eos-toggle-sword', showSwordIcon, colorSword)}
-          </div>
-        </div>
-      </div>
-
-      <!-- Sliders: tamanho + dias caveira -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div style="padding:10px;background:#1f1812;border-radius:6px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-            <span style="font-size:11px;color:#f0e0c8">Tamanho dos ícones</span>
-            <span id="eos-icon-size-val" style="font-size:11px;color:#f0b878;font-weight:700">${iconSize}px</span>
-          </div>
-          <input id="eos-icon-size" type="range" min="12" max="28" step="1" value="${iconSize}"
-            style="width:100%;accent-color:#e87830">
-        </div>
-        <div style="padding:10px;background:#1f1812;border-radius:6px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-            <span style="font-size:11px;color:#f0e0c8">Validade da caveira</span>
-            <span id="eos-skull-days-val" style="font-size:11px;color:#f0b878;font-weight:700">${skullDays} dias</span>
-          </div>
-          <input id="eos-skull-days" type="range" min="1" max="14" step="1" value="${skullDays}"
-            style="width:100%;accent-color:#e87830">
-        </div>
-      </div>
-
-      <!-- Animação + cores dos ícones táticos -->
-      <div style="margin-bottom:14px;padding:10px;background:#1a130e;border-radius:6px;border:1px solid #3a2a1a">
-        <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
-          Animação & Cores
-        </div>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;align-items:center">
-          <div>
-            <div style="font-size:10px;color:#908070;margin-bottom:3px">Animação</div>
-            <select id="eos-anim-type" style="width:100%;padding:5px;background:#0e0c08;color:#f0e0c8;border:1px solid #3a2a1a;border-radius:4px;font-size:11px">
-              <option value="none"    ${mapAnimation==='none'?'selected':''}>Nenhuma</option>
-              <option value="float"   ${mapAnimation==='float'?'selected':''}>Flutuar ⇅</option>
-              <option value="pulse"   ${mapAnimation==='pulse'?'selected':''}>Pulsar ⊚</option>
-              <option value="shake"   ${mapAnimation==='shake'?'selected':''}>Abanar ↔</option>
-              <option value="glow"    ${mapAnimation==='glow'?'selected':''}>Brilhar ✦</option>
-              <option value="spin"    ${mapAnimation==='spin'?'selected':''}>Rodar ↻</option>
-              <option value="breathe" ${mapAnimation==='breathe'?'selected':''}>Respirar ◐</option>
-            </select>
-          </div>
-          <div>
-            <div style="font-size:10px;color:#908070;margin-bottom:3px">💀 Caveira</div>
-            <input id="eos-color-skull" type="color" value="${colorSkull}" style="width:100%;height:28px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
-          </div>
-          <div>
-            <div style="font-size:10px;color:#908070;margin-bottom:3px">Axe</div>
-            <input id="eos-color-axe" type="color" value="${colorAxe}" style="width:100%;height:28px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
-          </div>
-          <div>
-            <div style="font-size:10px;color:#908070;margin-bottom:3px">Sword</div>
-            <input id="eos-color-sword" type="color" value="${colorSword}" style="width:100%;height:28px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
-          </div>
-        </div>
-      </div>
-
-      <!-- Aliados e Inimigos lado a lado -->
+      <!-- ═══ Classificação de Bunkers (2 colunas) ═══ -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div>
-          <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
-            Bunks Aliados
-          </div>
+        <div style="padding:14px;background:linear-gradient(160deg,#1f1812,#1a140e);border-radius:10px;border:1px solid #5ab07020">
+          ${sectionLabel('Bunks Aliados', '#5ab070')}
   `;
   for (let i = 0; i < bunkTypes.length; i++) html += bunkCardHTML(bunkTypes[i], i, 'ally');
 
   html += `
         </div>
-        <div>
-          <div style="font-size:10px;color:#b09878;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:700">
-            Bunks Inimigos
-          </div>
+        <div style="padding:14px;background:linear-gradient(160deg,#1f1812,#1a140e);border-radius:10px;border:1px solid #e0505020">
+          ${sectionLabel('Bunks Inimigos', '#e05050')}
   `;
   for (let i = 0; i < enemyBunkTypes.length; i++) html += bunkCardHTML(enemyBunkTypes[i], i, 'enemy');
 
@@ -1632,12 +1668,20 @@ function buildSettingsPanelHTML() {
         </div>
       </div>
     </div>
-    <div style="padding:10px 14px;border-top:1px solid #e8502030;flex-shrink:0">
-      <button id="eos-save-map-settings" style="width:100%;padding:10px;
-        background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:6px;
-        font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.5px;
-        box-shadow:0 2px 12px #e8502040">
-        Guardar definições
+    <div style="padding:14px 22px;border-top:1px solid #e8502030;flex-shrink:0;
+      background:linear-gradient(0deg,rgba(232,120,48,.06),transparent);
+      display:flex;gap:12px;align-items:center">
+      <div style="flex:1;font-size:10px;color:#8a7860">
+        <span style="color:#5ab070;font-weight:700">●</span> Alterações aplicam-se ao vivo
+      </div>
+      <button id="eos-save-map-settings" style="padding:11px 32px;
+        background:linear-gradient(135deg,#e87830,#c06020);color:#fff;border:none;border-radius:8px;
+        font-size:13px;font-weight:800;cursor:pointer;letter-spacing:1px;text-transform:uppercase;
+        box-shadow:0 4px 18px #e8502050,inset 0 1px 0 rgba(255,200,120,.3);
+        transition:transform .1s"
+        onmouseover="this.style.transform='translateY(-1px)'"
+        onmouseout="this.style.transform='translateY(0)'">
+        💾 Guardar
       </button>
     </div>
   `;
