@@ -3241,8 +3241,19 @@ window.addEventListener('message', (event) => {
   }
 
   if (event.data.type === 'EOS_GROUPS_DATA' && Array.isArray(event.data.groups)) {
-    chrome.storage.local.set({ twGroups: event.data.groups });
-    showOverlay(`✔ ${event.data.groups.length} grupos extraídos!`, 'ok');
+    const groups = event.data.groups;
+    chrome.storage.local.set({ twGroups: groups });
+    // POSTa para o servidor (window.Groups é fonte mais completa que o DOM)
+    getWorldStorage('token').then(({ token }) => {
+      if (token) {
+        fetch(`${EOS_SERVER}/api/tw-groups`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ groups })
+        }).catch(() => {});
+      }
+    });
+    showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
     setTimeout(() => window.close(), 1500);
   }
 
