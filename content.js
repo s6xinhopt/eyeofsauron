@@ -1400,7 +1400,7 @@ function injectShieldStyles() {
     .eos-anim-pulse   { animation: eos-pulse   1.6s ease-in-out infinite; }
     .eos-anim-shake   { animation: eos-shake   .6s ease-in-out infinite; }
     .eos-anim-glow    { animation: eos-glow    1.8s ease-in-out infinite; }
-    .eos-anim-spin    { animation: eos-spin    3s linear infinite; }
+    .eos-anim-spin img { animation: eos-spin 3s linear infinite; }
     .eos-anim-breathe { animation: eos-breathe 2.4s ease-in-out infinite; }
   `;
 }
