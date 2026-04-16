@@ -2161,23 +2161,20 @@ function setupVillageActionMenuObserver() {
 
   const MARK_CLASS = 'eos-mark-action-btn';
 
-  // Última aldeia clicada (atualizada no click listener abaixo)
-  let lastClickedCoord = null;
-
   function resolveCoordFromMenu(menu) {
-    // 1. Aldeia clicada mais recentemente
-    if (lastClickedCoord) return lastClickedCoord;
-    // 2. Tenta extrair coord de links internos do menu
+    // 1. Tenta extrair coord do data-id/onclick/href de qualquer link interno
     const links = menu.querySelectorAll('a[href*="village="]');
     for (const a of links) {
-      const vidMatch = (a.getAttribute('href') || '').match(/village=(\d+)/);
+      const href = a.getAttribute('href') || '';
+      const vidMatch = href.match(/village=(\d+)/);
       if (vidMatch && mapVillageData) {
+        // Vid → coord via mapVillageData
         for (const [coord, v] of mapVillageData) {
           if (String(v.village_id || '') === vidMatch[1]) return coord;
         }
       }
     }
-    // 3. Procura texto (X|Y) no menu ou parents
+    // 2. Procura texto com formato "(X|Y)" no próprio menu ou parents
     let scope = menu;
     for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
       const m = (scope.textContent || '').match(/\((\d+\|\d+)\)/);
@@ -2185,32 +2182,6 @@ function setupVillageActionMenuObserver() {
     }
     return null;
   }
-
-  // Deteta clique em aldeia do mapa para saber qual coord abriu o menu
-  document.addEventListener('mousedown', (e) => {
-    const village = e.target.closest?.('[id^="map_village_"]');
-    if (!village) { lastClickedCoord = null; return; }
-    const vidMatch = village.id.match(/map_village_(\d+)/);
-    if (!vidMatch) { lastClickedCoord = null; return; }
-    const vid = vidMatch[1];
-    // vid → coord via data-eos-villages ou mapVillageData
-    const mapEl = document.getElementById('map');
-    const villageMap = mapEl?.getAttribute('data-eos-villages');
-    if (villageMap) {
-      try {
-        const ids = JSON.parse(villageMap);
-        for (const [coord, v] of Object.entries(ids)) {
-          if (String(v) === vid) { lastClickedCoord = coord; return; }
-        }
-      } catch (_) {}
-    }
-    if (mapVillageData) {
-      for (const [coord, v] of mapVillageData) {
-        if (String(v.village_id || '') === vid) { lastClickedCoord = coord; return; }
-      }
-    }
-    lastClickedCoord = null;
-  }, true);
 
   function injectIntoMenu(menu) {
     if (!menu || menu.querySelector('.' + MARK_CLASS)) return;
@@ -2251,26 +2222,64 @@ function setupVillageActionMenuObserver() {
     }
   }
 
-  // O menu de ação usa #tooltip.tooltip-style (confirmado via diagnóstico).
-  // Só injetamos quando o tooltip contém vários links/imgs (é o menu de ação
-  // e não uma tooltip simples de info).
-  function hasActionMenuContent(el) {
-    if (!el) return false;
-    const links = el.querySelectorAll('a, img[src*="command"], img[src*="unit"]');
-    return links.length >= 3;
+  // Procura em qualquer node recém-adicionado os possíveis menus de ação
+  const MENU_SELECTORS = [
+    '.context-menu',
+    '.context-menu-container',
+    '#map_menu',
+    '.map-menu',
+    '.village-action-menu',
+    '[class*="contextmenu"]',
+  ];
+
+  function tryInjectInNode(node) {
+    if (!(node instanceof HTMLElement)) return;
+    for (const sel of MENU_SELECTORS) {
+      if (node.matches?.(sel)) injectIntoMenu(node);
+      node.querySelectorAll?.(sel).forEach(injectIntoMenu);
+    }
   }
 
-  function tryInjectTooltip() {
-    const tt = document.getElementById('tooltip');
-    if (!tt || tt.offsetHeight === 0) return;
-    if (!hasActionMenuContent(tt)) return;
-    injectIntoMenu(tt);
-  }
+  const obs = new MutationObserver(muts => {
+    for (const m of muts) {
+      m.addedNodes.forEach(tryInjectInNode);
+    }
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
 
-  // Watcher genérico para quaisquer mudanças no #tooltip
-  const obs = new MutationObserver(() => tryInjectTooltip());
-  obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-
+  // DIAGNÓSTICO: snapshot visíveis antes e depois do click em qualquer lado
+  // do mapa (o menu pode usar display:none em vez de ser criado/removido)
+  document.addEventListener('mousedown', (e) => {
+    const villageEl = e.target.closest?.('[id^="map_village_"]');
+    const isMap = e.target.closest?.('#map_container, #map');
+    if (!villageEl && !isMap) return;
+    // Snapshot de elementos visíveis
+    const before = new Map();
+    document.querySelectorAll('*').forEach(el => {
+      if (el instanceof HTMLElement) before.set(el, el.offsetHeight > 0);
+    });
+    setTimeout(() => {
+      const newlyVisible = [];
+      document.querySelectorAll('*').forEach(el => {
+        if (!(el instanceof HTMLElement)) return;
+        if (el.offsetHeight === 0) return;
+        const wasVisible = before.get(el);
+        if (wasVisible) return;
+        // Só nos interessam os que têm múltiplos filhos (potencial menu)
+        if (el.children.length < 2) return;
+        newlyVisible.push({
+          tag: el.tagName,
+          id: el.id,
+          classes: typeof el.className === 'string' ? el.className : '',
+          kids: el.children.length,
+          rect: `${Math.round(el.getBoundingClientRect().left)},${Math.round(el.getBoundingClientRect().top)}`,
+        });
+      });
+      if (newlyVisible.length > 0) {
+        console.log('[EOS mark-debug] elementos agora visíveis:', newlyVisible.slice(0, 20));
+      }
+    }, 200);
+  }, true);
 }
 
 function setupPopupObserver() {
