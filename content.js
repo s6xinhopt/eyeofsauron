@@ -1250,7 +1250,10 @@ let eosMapEnabled = true;
 
 // Configuração de bunk types (guardada no storage)
 // Pop defensiva por unidade: spear=1, sword=1, heavy=6
-const DEF_POP = { spear: 1, sword: 1, archer: 1, heavy: 6, militia: 1 };
+// Nota: militia NÃO conta para bunker — é temporária (ativa durante defesas)
+// e levaria a classificar aldeias normais como bunks quando o jogador está
+// sob ataque.
+const DEF_POP = { spear: 1, sword: 1, archer: 1, heavy: 6 };
 
 function calcDefPop(troops) {
   if (!troops) return 0;
