@@ -1286,6 +1286,7 @@ let colorAxe       = '#c02020';
 let colorSword     = '#20305a';
 let streamerMode   = false;
 const STREAMER_SHIELD_COLOR = '#5a5a5a';  // cinza neutro para ocultar tier
+let markedVillages = new Set();           // coords "XXX|YYY" marcadas manualmente
 
 function makeShieldElement(color, size = 18) {
   const el = document.createElement('div');
@@ -1398,6 +1399,7 @@ function injectShieldStyles() {
     @keyframes eos-glow    { 0%,100% { filter: brightness(1) drop-shadow(0 0 2px rgba(255,200,120,.4)); } 50% { filter: brightness(1.35) drop-shadow(0 0 6px rgba(255,180,80,.9)); } }
     @keyframes eos-spin    { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
     @keyframes eos-breathe { 0%,100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.08); opacity: 1; } }
+    @keyframes eos-mark-pulse { 0%,100% { box-shadow: 0 0 8px rgba(224,64,64,.7), inset 0 0 6px rgba(255,80,80,.3); } 50% { box-shadow: 0 0 14px rgba(224,64,64,1), inset 0 0 10px rgba(255,80,80,.5); } }
 
     .eos-anim-float   { animation: eos-float   2s ease-in-out infinite; }
     .eos-anim-pulse   { animation: eos-pulse   1.6s ease-in-out infinite; }
@@ -1456,6 +1458,12 @@ async function initMapOverlay() {
   if (typeof eosColorAxe   === 'string') colorAxe   = eosColorAxe;
   if (typeof eosColorSword === 'string') colorSword = eosColorSword;
   if (eosStreamerMode === true) streamerMode = true;
+  // Carrega lista de aldeias marcadas (per-world)
+  try {
+    const markedKey = `eosMarkedVillages.${CURRENT_WORLD || 'default'}`;
+    const mStore = await getStorage(markedKey);
+    if (Array.isArray(mStore[markedKey])) markedVillages = new Set(mStore[markedKey]);
+  } catch (_) {}
 
   // Observa o popup nativo do TW para injetar dados de tropas
   setupPopupObserver();
@@ -2001,6 +2009,25 @@ function placeShields() {
     const alreadyShield      = parent.querySelector(`[data-eos-shield="${coordKey}"]`);
     const alreadyEnemyShield = parent.querySelector(`[data-eos-enemy-shield="${coordKey}"]`);
     const alreadyEnemy       = parent.querySelector(`[data-eos-enemy="${coordKey}"]`);
+    const alreadyMark        = parent.querySelector(`[data-eos-mark="${coordKey}"]`);
+
+    // ── Moldura vermelha de aldeia marcada ──
+    const isMarked = markedVillages.has(coordKey);
+    if (isMarked && !alreadyMark) {
+      const top = parseInt(domVillage.style.top, 10) || 0;
+      const left = parseInt(domVillage.style.left, 10) || 0;
+      const mark = document.createElement('div');
+      mark.dataset.eosMark = coordKey;
+      mark.style.cssText = `position:absolute;pointer-events:none;z-index:19;
+        left:${left - 2}px;top:${top - 2}px;width:57px;height:39px;
+        border:2px solid #e04040;border-radius:3px;
+        box-shadow:0 0 8px rgba(224,64,64,.7),inset 0 0 6px rgba(255,80,80,.3);
+        animation:eos-mark-pulse 1.8s ease-in-out infinite`;
+      parent.insertBefore(mark, domVillage);
+    } else if (!isMarked && alreadyMark) {
+      alreadyMark.remove();
+    }
+
     if (alreadyShield && alreadyEnemyShield && alreadyEnemy) continue;
 
     const top = parseInt(domVillage.style.top, 10) || 0;
@@ -2108,6 +2135,55 @@ function startShieldTracking() {
 
   // Fallback periódico
   setInterval(placeShields, 30000);
+}
+
+async function saveMarkedVillages() {
+  try {
+    const key = `eosMarkedVillages.${CURRENT_WORLD || 'default'}`;
+    await chrome.storage.local.set({ [key]: Array.from(markedVillages) });
+  } catch (_) {}
+}
+
+function toggleMarkVillage(coordKey) {
+  if (markedVillages.has(coordKey)) markedVillages.delete(coordKey);
+  else markedVillages.add(coordKey);
+  saveMarkedVillages();
+  // Re-render para aparecer/desaparecer moldura
+  document.querySelectorAll(`[data-eos-mark="${coordKey}"]`).forEach(el => el.remove());
+  placeShields();
+}
+
+function injectMarkButton(popup, coordKey) {
+  if (!popup) return;
+  const BTN_ID = 'eos-mark-btn';
+  if (popup.querySelector('#' + BTN_ID)) return;
+  const isMarked = markedVillages.has(coordKey);
+  const btn = document.createElement('div');
+  btn.id = BTN_ID;
+  btn.title = isMarked ? 'Desmarcar aldeia' : 'Marcar aldeia';
+  btn.style.cssText = `position:absolute;top:-12px;right:-12px;z-index:10;
+    width:28px;height:28px;border-radius:50%;
+    background:${isMarked ? 'linear-gradient(135deg,#e04040,#a02020)' : 'linear-gradient(135deg,#3a2a1a,#2a1a10)'};
+    border:2px solid ${isMarked ? '#ff6060' : '#e8783080'};
+    box-shadow:0 2px 8px rgba(0,0,0,.6),0 0 8px ${isMarked ? '#e04040aa' : '#e8783040'};
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    font-size:14px;transition:transform .15s`;
+  btn.textContent = '🎯';
+  btn.addEventListener('mouseover', () => btn.style.transform = 'scale(1.15)');
+  btn.addEventListener('mouseout',  () => btn.style.transform = 'scale(1)');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMarkVillage(coordKey);
+    // Atualiza visual do botão in-place
+    const nowMarked = markedVillages.has(coordKey);
+    btn.style.background = nowMarked ? 'linear-gradient(135deg,#e04040,#a02020)' : 'linear-gradient(135deg,#3a2a1a,#2a1a10)';
+    btn.style.borderColor = nowMarked ? '#ff6060' : '#e8783080';
+    btn.style.boxShadow = `0 2px 8px rgba(0,0,0,.6),0 0 8px ${nowMarked ? '#e04040aa' : '#e8783040'}`;
+    btn.title = nowMarked ? 'Desmarcar aldeia' : 'Marcar aldeia';
+  });
+  // Popup precisa ser relative para o absolute funcionar
+  if (getComputedStyle(popup).position === 'static') popup.style.position = 'relative';
+  popup.appendChild(btn);
 }
 
 function setupPopupObserver() {
@@ -2250,6 +2326,11 @@ function setupPopupObserver() {
     const coordMatch = th.textContent.match(/\((\d+\|\d+)\)/);
     if (!coordMatch) return;
     const coord = coordMatch[1];
+    // Remove botão antigo se coord mudou
+    if (coord !== lastPopupCoord) {
+      popup.querySelector('#eos-mark-btn')?.remove();
+    }
+    injectMarkButton(popup, coord);
     if (coord === lastPopupCoord && popup.querySelector('#' + EOS_TROOP_ROW_ID)) return;
     lastPopupCoord = coord;
     const old = popup.querySelector('#' + EOS_TROOP_ROW_ID);
