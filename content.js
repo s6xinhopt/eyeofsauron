@@ -2247,29 +2247,38 @@ function setupVillageActionMenuObserver() {
   });
   obs.observe(document.body, { childList: true, subtree: true });
 
-  // DIAGNÓSTICO: quando clica numa aldeia, loga elementos novos visíveis
-  document.addEventListener('click', (e) => {
-    const village = e.target.closest?.('[id^="map_village_"]');
-    if (!village) return;
-    console.log('[EOS mark-debug] clique em', village.id);
-    const snapshot = new Set(document.querySelectorAll('*'));
+  // DIAGNÓSTICO: snapshot visíveis antes e depois do click em qualquer lado
+  // do mapa (o menu pode usar display:none em vez de ser criado/removido)
+  document.addEventListener('mousedown', (e) => {
+    const villageEl = e.target.closest?.('[id^="map_village_"]');
+    const isMap = e.target.closest?.('#map_container, #map');
+    if (!villageEl && !isMap) return;
+    // Snapshot de elementos visíveis
+    const before = new Map();
+    document.querySelectorAll('*').forEach(el => {
+      if (el instanceof HTMLElement) before.set(el, el.offsetHeight > 0);
+    });
     setTimeout(() => {
-      const now = document.querySelectorAll('*');
-      const added = [];
-      for (const el of now) {
-        if (snapshot.has(el)) continue;
-        if (!(el instanceof HTMLElement)) continue;
-        if (el.offsetHeight === 0) continue;
-        if (!el.className && !el.id) continue;
-        added.push({
+      const newlyVisible = [];
+      document.querySelectorAll('*').forEach(el => {
+        if (!(el instanceof HTMLElement)) return;
+        if (el.offsetHeight === 0) return;
+        const wasVisible = before.get(el);
+        if (wasVisible) return;
+        // Só nos interessam os que têm múltiplos filhos (potencial menu)
+        if (el.children.length < 2) return;
+        newlyVisible.push({
           tag: el.tagName,
           id: el.id,
           classes: typeof el.className === 'string' ? el.className : '',
-          children: el.children.length,
+          kids: el.children.length,
+          rect: `${Math.round(el.getBoundingClientRect().left)},${Math.round(el.getBoundingClientRect().top)}`,
         });
+      });
+      if (newlyVisible.length > 0) {
+        console.log('[EOS mark-debug] elementos agora visíveis:', newlyVisible.slice(0, 20));
       }
-      console.log('[EOS mark-debug] novos elementos:', added.slice(0, 30));
-    }, 150);
+    }, 200);
   }, true);
 }
 
