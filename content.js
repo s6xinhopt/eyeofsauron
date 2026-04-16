@@ -684,9 +684,9 @@ function showOverlay(msg, type = 'info', progress = -1) {
     text-align:center;color:#f4e0c0;font-size:15px;font-weight:700;
     animation:eos-glow-border 3s ease-in-out infinite`;
 
-  // Olho de Sauron no topo
+  // Glyph temático
   const eye = document.createElement('div');
-  eye.textContent = type === 'error' ? '⚠' : type === 'ok' ? '✔' : '👁';
+  eye.textContent = type === 'error' ? '⚠' : type === 'ok' ? '✔' : '🔥';
   eye.style.cssText = `font-size:34px;margin-bottom:10px;color:${accent};
     animation:eos-eye-pulse 2s ease-in-out infinite,eos-flame-flicker 1.8s ease-in-out infinite`;
   inner.appendChild(eye);
