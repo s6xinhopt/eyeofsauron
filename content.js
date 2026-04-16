@@ -1289,9 +1289,12 @@ const STREAMER_SHIELD_COLOR = '#5a5a5a';  // cinza neutro para ocultar tier
 
 function makeShieldElement(color, size = 18) {
   const el = document.createElement('div');
-  el.textContent = '🛡️';
   const fs = Math.round(size * 0.6);
-  el.style.cssText = `font-size:${fs}px;line-height:${size}px;width:${size}px;height:${size}px;text-align:center;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 0 4px ${color}88,0 1px 3px rgba(0,0,0,.6)`;
+  el.style.cssText = `font-size:${fs}px;line-height:${size}px;width:${size}px;height:${size}px;text-align:center;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 0 4px ${color}88,0 1px 3px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center`;
+  const inner = document.createElement('span');
+  inner.textContent = '🛡️';
+  inner.style.cssText = 'display:inline-block';
+  el.appendChild(inner);
   return el;
 }
 
@@ -1400,7 +1403,7 @@ function injectShieldStyles() {
     .eos-anim-pulse   { animation: eos-pulse   1.6s ease-in-out infinite; }
     .eos-anim-shake   { animation: eos-shake   .6s ease-in-out infinite; }
     .eos-anim-glow    { animation: eos-glow    1.8s ease-in-out infinite; }
-    .eos-anim-spin img { animation: eos-spin 3s linear infinite; }
+    .eos-anim-spin img, .eos-anim-spin > span { animation: eos-spin 3s linear infinite; }
     .eos-anim-breathe { animation: eos-breathe 2.4s ease-in-out infinite; }
   `;
 }
@@ -2071,8 +2074,10 @@ function placeShields() {
           img.style.cssText = `width:${innerImgSz}px;height:${innerImgSz}px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.8))`;
           icon.appendChild(img);
         } else if (tactical.emoji) {
-          icon.textContent = tactical.emoji;
-          icon.style.color = '#fff';
+          const span = document.createElement('span');
+          span.textContent = tactical.emoji;
+          span.style.cssText = 'color:#fff;display:inline-block';
+          icon.appendChild(span);
         }
         parent.insertBefore(icon, domVillage);
       }
