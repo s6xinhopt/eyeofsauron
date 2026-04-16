@@ -1467,7 +1467,6 @@ async function initMapOverlay() {
 
   // Observa o popup nativo do TW para injetar dados de tropas
   setupPopupObserver();
-  setupVillageActionMenuObserver();
 
   // Injeta botão de settings do mapa
   injectMapSettingsButton();
@@ -2154,98 +2153,37 @@ function toggleMarkVillage(coordKey) {
   placeShields();
 }
 
-// Observer do menu de ação da aldeia (aparece ao clicar numa aldeia no mapa).
-// Injeta o botão 🎯 como primeiro item da coluna.
-function setupVillageActionMenuObserver() {
-  if (!isMapPage()) return;
-
-  const MARK_CLASS = 'eos-mark-action-btn';
-
-  function resolveCoordFromMenu(menu) {
-    // 1. Tenta extrair coord do data-id/onclick/href de qualquer link interno
-    const links = menu.querySelectorAll('a[href*="village="]');
-    for (const a of links) {
-      const href = a.getAttribute('href') || '';
-      const vidMatch = href.match(/village=(\d+)/);
-      if (vidMatch && mapVillageData) {
-        // Vid → coord via mapVillageData
-        for (const [coord, v] of mapVillageData) {
-          if (String(v.village_id || '') === vidMatch[1]) return coord;
-        }
-      }
-    }
-    // 2. Procura texto com formato "(X|Y)" no próprio menu ou parents
-    let scope = menu;
-    for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
-      const m = (scope.textContent || '').match(/\((\d+\|\d+)\)/);
-      if (m) return m[1];
-    }
-    return null;
-  }
-
-  function injectIntoMenu(menu) {
-    if (!menu || menu.querySelector('.' + MARK_CLASS)) return;
-    const coord = resolveCoordFromMenu(menu);
-    if (!coord) return;
-
-    const isMarked = markedVillages.has(coord);
-    // Tenta encontrar algum botão existente para copiar o estilo/tamanho
-    const sample = menu.querySelector('a, div[onclick], img');
-    const box = document.createElement('div');
-    box.className = MARK_CLASS;
-    box.title = isMarked ? 'Desmarcar aldeia (EOS)' : 'Marcar aldeia (EOS)';
-    box.style.cssText = `display:flex;align-items:center;justify-content:center;
-      width:28px;height:28px;margin:2px auto;border-radius:4px;cursor:pointer;
-      background:${isMarked ? 'linear-gradient(135deg,#e04040,#a02020)' : 'linear-gradient(135deg,#3a2a1a,#2a1a10)'};
-      border:1.5px solid ${isMarked ? '#ff6060' : '#e8783080'};
-      box-shadow:0 0 6px ${isMarked ? '#e04040aa' : '#e8783040'};
-      font-size:16px;transition:transform .15s`;
-    box.textContent = '🎯';
-    box.addEventListener('mouseover', () => box.style.transform = 'scale(1.12)');
-    box.addEventListener('mouseout',  () => box.style.transform = 'scale(1)');
-    box.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      toggleMarkVillage(coord);
-      const nowMarked = markedVillages.has(coord);
-      box.style.background = nowMarked ? 'linear-gradient(135deg,#e04040,#a02020)' : 'linear-gradient(135deg,#3a2a1a,#2a1a10)';
-      box.style.borderColor = nowMarked ? '#ff6060' : '#e8783080';
-      box.style.boxShadow = `0 0 6px ${nowMarked ? '#e04040aa' : '#e8783040'}`;
-      box.title = nowMarked ? 'Desmarcar aldeia (EOS)' : 'Marcar aldeia (EOS)';
-    });
-    // Insere no topo do menu
-    menu.insertBefore(box, menu.firstChild);
-    if (sample) {
-      // Tenta alinhar com o layout do menu se souber estilo
-      box.style.width = (sample.offsetWidth || 28) + 'px';
-      box.style.height = (sample.offsetHeight || 28) + 'px';
-    }
-  }
-
-  // Procura em qualquer node recém-adicionado os possíveis menus de ação
-  const MENU_SELECTORS = [
-    '.context-menu',
-    '.context-menu-container',
-    '#map_menu',
-    '.map-menu',
-    '.village-action-menu',
-    '[class*="contextmenu"]',
-  ];
-
-  function tryInjectInNode(node) {
-    if (!(node instanceof HTMLElement)) return;
-    for (const sel of MENU_SELECTORS) {
-      if (node.matches?.(sel)) injectIntoMenu(node);
-      node.querySelectorAll?.(sel).forEach(injectIntoMenu);
-    }
-  }
-
-  const obs = new MutationObserver(muts => {
-    for (const m of muts) {
-      m.addedNodes.forEach(tryInjectInNode);
-    }
+function injectMarkButton(popup, coordKey) {
+  if (!popup) return;
+  const BTN_ID = 'eos-mark-btn';
+  if (popup.querySelector('#' + BTN_ID)) return;
+  const isMarked = markedVillages.has(coordKey);
+  const btn = document.createElement('div');
+  btn.id = BTN_ID;
+  btn.title = isMarked ? 'Desmarcar aldeia' : 'Marcar aldeia';
+  btn.style.cssText = `position:absolute;top:-12px;right:-12px;z-index:10;
+    width:28px;height:28px;border-radius:50%;
+    background:${isMarked ? 'linear-gradient(135deg,#e04040,#a02020)' : 'linear-gradient(135deg,#3a2a1a,#2a1a10)'};
+    border:2px solid ${isMarked ? '#ff6060' : '#e8783080'};
+    box-shadow:0 2px 8px rgba(0,0,0,.6),0 0 8px ${isMarked ? '#e04040aa' : '#e8783040'};
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    font-size:14px;transition:transform .15s`;
+  btn.textContent = '🎯';
+  btn.addEventListener('mouseover', () => btn.style.transform = 'scale(1.15)');
+  btn.addEventListener('mouseout',  () => btn.style.transform = 'scale(1)');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMarkVillage(coordKey);
+    // Atualiza visual do botão in-place
+    const nowMarked = markedVillages.has(coordKey);
+    btn.style.background = nowMarked ? 'linear-gradient(135deg,#e04040,#a02020)' : 'linear-gradient(135deg,#3a2a1a,#2a1a10)';
+    btn.style.borderColor = nowMarked ? '#ff6060' : '#e8783080';
+    btn.style.boxShadow = `0 2px 8px rgba(0,0,0,.6),0 0 8px ${nowMarked ? '#e04040aa' : '#e8783040'}`;
+    btn.title = nowMarked ? 'Desmarcar aldeia' : 'Marcar aldeia';
   });
-  obs.observe(document.body, { childList: true, subtree: true });
+  // Popup precisa ser relative para o absolute funcionar
+  if (getComputedStyle(popup).position === 'static') popup.style.position = 'relative';
+  popup.appendChild(btn);
 }
 
 function setupPopupObserver() {
@@ -2388,6 +2326,11 @@ function setupPopupObserver() {
     const coordMatch = th.textContent.match(/\((\d+\|\d+)\)/);
     if (!coordMatch) return;
     const coord = coordMatch[1];
+    // Remove botão antigo se coord mudou
+    if (coord !== lastPopupCoord) {
+      popup.querySelector('#eos-mark-btn')?.remove();
+    }
+    injectMarkButton(popup, coord);
     if (coord === lastPopupCoord && popup.querySelector('#' + EOS_TROOP_ROW_ID)) return;
     lastPopupCoord = coord;
     const old = popup.querySelector('#' + EOS_TROOP_ROW_ID);
