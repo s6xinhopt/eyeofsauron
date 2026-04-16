@@ -2212,19 +2212,10 @@ function setupVillageActionMenuObserver() {
     lastClickedCoord = null;
   }, true);
 
-  // Após qualquer mousedown em aldeia, polls rápidos para capturar o tooltip
-  document.addEventListener('mousedown', (e) => {
-    if (!e.target.closest?.('[id^="map_village_"]')) return;
-    [100, 250, 500, 900, 1500].forEach(ms => setTimeout(tryInjectTooltip, ms));
-  }, true);
-
   function injectIntoMenu(menu) {
-    if (!menu) return;
-    // Remove botão antigo (pode estar vinculado a outra aldeia)
-    menu.querySelector('.' + MARK_CLASS)?.remove();
+    if (!menu || menu.querySelector('.' + MARK_CLASS)) return;
     const coord = resolveCoordFromMenu(menu);
-    if (!coord) { console.log('[EOS mark] sem coord resolvida para menu', menu); return; }
-    console.log('[EOS mark] injetar botão para', coord);
+    if (!coord) return;
 
     const isMarked = markedVillages.has(coord);
     // Tenta encontrar algum botão existente para copiar o estilo/tamanho
@@ -2263,11 +2254,16 @@ function setupVillageActionMenuObserver() {
   // O menu de ação usa #tooltip.tooltip-style (confirmado via diagnóstico).
   // Só injetamos quando o tooltip contém vários links/imgs (é o menu de ação
   // e não uma tooltip simples de info).
+  function hasActionMenuContent(el) {
+    if (!el) return false;
+    const links = el.querySelectorAll('a, img[src*="command"], img[src*="unit"]');
+    return links.length >= 3;
+  }
+
   function tryInjectTooltip() {
     const tt = document.getElementById('tooltip');
     if (!tt || tt.offsetHeight === 0) return;
-    // Só injeta se o utilizador clicou recentemente numa aldeia
-    if (!lastClickedCoord) return;
+    if (!hasActionMenuContent(tt)) return;
     injectIntoMenu(tt);
   }
 
