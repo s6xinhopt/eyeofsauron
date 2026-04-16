@@ -624,34 +624,111 @@ function extractTWGroups() {
 // ── Overlay ──────────────────────────────────────────────────────────────────
 
 function showOverlay(msg, type = 'info', progress = -1) {
+  // Keyframes de fogo/brasa (inject once)
+  if (!document.getElementById('eos-overlay-fx')) {
+    const st = document.createElement('style');
+    st.id = 'eos-overlay-fx';
+    st.textContent = `
+      @keyframes eos-ember-rise { 0%{transform:translateY(0) scale(1);opacity:.9} 100%{transform:translateY(-140px) scale(.2);opacity:0} }
+      @keyframes eos-flame-flicker { 0%,100%{filter:brightness(1) hue-rotate(0deg)} 50%{filter:brightness(1.25) hue-rotate(-6deg)} }
+      @keyframes eos-glow-border { 0%,100%{box-shadow:0 0 0 1px #e8502060,0 0 24px rgba(232,120,48,.4),0 8px 32px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,180,80,.15)} 50%{box-shadow:0 0 0 1px #f0a03080,0 0 36px rgba(240,160,48,.55),0 8px 32px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,200,120,.25)} }
+      @keyframes eos-bar-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+      @keyframes eos-eye-pulse { 0%,100%{text-shadow:0 0 12px rgba(232,120,48,.6)} 50%{text-shadow:0 0 24px rgba(255,180,80,.9),0 0 8px rgba(255,200,120,.7)} }
+    `;
+    document.head.appendChild(st);
+  }
+
   let el = document.getElementById('eos-overlay');
   if (!el) {
     el = document.createElement('div');
     el.id = 'eos-overlay';
-    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:2147483647;font-family:Segoe UI,sans-serif';
+    el.style.cssText = `position:fixed;inset:0;
+      background:radial-gradient(ellipse at center,rgba(40,16,8,.82),rgba(0,0,0,.88));
+      display:flex;align-items:center;justify-content:center;z-index:2147483647;
+      font-family:Segoe UI,sans-serif;backdrop-filter:blur(2px)`;
     document.body.appendChild(el);
   }
-  const color = type==='error'?'#f44336':type==='ok'?'#4caf50':'#c0a060';
-  el.textContent = '';
-  const inner = document.createElement('div');
-  inner.style.cssText = `background:#1a1a2e;border:2px solid ${color};border-radius:8px;padding:24px 36px;text-align:center;color:${color};font-size:15px;font-weight:bold;min-width:280px`;
-  inner.textContent = msg;
 
-  // Barra de progresso
+  const accent = type==='error' ? '#e05050' : type==='ok' ? '#6fcf6f' : '#f0a030';
+  const flameBot = type==='error' ? '#c03030' : type==='ok' ? '#3a9a3a' : '#c06020';
+  el.textContent = '';
+
+  // Wrapper com brasas animadas
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:relative;width:420px;max-width:92vw';
+
+  // Brasas (emberów) atrás do card
+  const emberContainer = document.createElement('div');
+  emberContainer.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:14px';
+  for (let i = 0; i < 8; i++) {
+    const ember = document.createElement('div');
+    const sz = 2 + Math.random() * 4;
+    const delay = Math.random() * 3;
+    const dur = 2 + Math.random() * 2;
+    const left = 10 + Math.random() * 80;
+    ember.style.cssText = `position:absolute;bottom:-10px;left:${left}%;
+      width:${sz}px;height:${sz}px;border-radius:50%;
+      background:radial-gradient(circle,${accent},${flameBot}00);
+      box-shadow:0 0 6px ${accent};
+      animation:eos-ember-rise ${dur}s ease-in ${delay}s infinite`;
+    emberContainer.appendChild(ember);
+  }
+  wrap.appendChild(emberContainer);
+
+  const inner = document.createElement('div');
+  inner.style.cssText = `position:relative;
+    background:
+      radial-gradient(ellipse at 50% 0%, ${accent}18, transparent 60%),
+      linear-gradient(180deg,#2a1a10 0%,#1a0f08 100%);
+    border:1px solid ${accent}60;border-radius:14px;padding:28px 36px;
+    text-align:center;color:#f4e0c0;font-size:15px;font-weight:700;
+    animation:eos-glow-border 3s ease-in-out infinite`;
+
+  // Olho de Sauron no topo
+  const eye = document.createElement('div');
+  eye.textContent = type === 'error' ? '⚠' : type === 'ok' ? '✔' : '👁';
+  eye.style.cssText = `font-size:34px;margin-bottom:10px;color:${accent};
+    animation:eos-eye-pulse 2s ease-in-out infinite,eos-flame-flicker 1.8s ease-in-out infinite`;
+  inner.appendChild(eye);
+
+  const txt = document.createElement('div');
+  txt.textContent = msg;
+  txt.style.cssText = `color:#f4e0c0;font-size:15px;font-weight:600;letter-spacing:.3px;
+    text-shadow:0 1px 4px rgba(0,0,0,.6),0 0 8px ${accent}30`;
+  inner.appendChild(txt);
+
+  // Barra de progresso com flame
   if (progress >= 0) {
+    const p = Math.min(Math.max(progress, 0), 100);
     const barBg = document.createElement('div');
-    barBg.style.cssText = 'margin-top:14px;height:8px;background:#0a0a14;border-radius:4px;overflow:hidden;border:1px solid #2a2a3a';
+    barBg.style.cssText = `margin-top:18px;height:10px;background:#100806;
+      border-radius:5px;overflow:hidden;border:1px solid #3a2418;
+      box-shadow:inset 0 2px 4px rgba(0,0,0,.6)`;
     const barFill = document.createElement('div');
-    barFill.style.cssText = `height:100%;border-radius:4px;transition:width .3s ease;width:${Math.min(progress, 100)}%;background:linear-gradient(90deg,#e87830,#f0a030);box-shadow:0 0 8px #e8783060`;
+    barFill.style.cssText = `height:100%;width:${p}%;position:relative;
+      background:linear-gradient(90deg,#c04010,${accent},#ffd060);
+      box-shadow:0 0 12px ${accent}cc,inset 0 1px 0 rgba(255,220,160,.5);
+      transition:width .4s cubic-bezier(.4,0,.2,1);border-radius:5px`;
+    // Overlay shimmer
+    const shimmer = document.createElement('div');
+    shimmer.style.cssText = `position:absolute;inset:0;
+      background:linear-gradient(90deg,transparent,rgba(255,240,200,.4),transparent);
+      background-size:200% 100%;
+      animation:eos-bar-shimmer 1.4s linear infinite`;
+    barFill.appendChild(shimmer);
     barBg.appendChild(barFill);
     inner.appendChild(barBg);
+
     const pct = document.createElement('div');
-    pct.style.cssText = 'margin-top:6px;font-size:11px;color:#908070;font-weight:400';
-    pct.textContent = `${Math.round(progress)}%`;
+    pct.style.cssText = `margin-top:8px;font-size:11px;color:${accent};
+      font-weight:800;letter-spacing:2px;text-transform:uppercase;
+      font-variant-numeric:tabular-nums`;
+    pct.textContent = `${Math.round(p)}%`;
     inner.appendChild(pct);
   }
 
-  el.appendChild(inner);
+  wrap.appendChild(inner);
+  el.appendChild(wrap);
 }
 
 // ── Clique de grupo ──────────────────────────────────────────────────────────
