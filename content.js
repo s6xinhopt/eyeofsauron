@@ -2266,16 +2266,14 @@ function setupVillageActionMenuObserver() {
   function tryInjectTooltip() {
     const tt = document.getElementById('tooltip');
     if (!tt || tt.offsetHeight === 0) return;
+    // Só injeta se o utilizador clicou recentemente numa aldeia
+    if (!lastClickedCoord) return;
     injectIntoMenu(tt);
   }
 
   // Watcher genérico para quaisquer mudanças no #tooltip
   const obs = new MutationObserver(() => tryInjectTooltip());
   obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-
-  // Poll fallback: de 500 em 500ms, verifica se #tooltip está visível
-  setInterval(tryInjectTooltip, 500);
-  console.log('[EOS mark] observer de tooltip iniciado');
 
 }
 
