@@ -2220,12 +2220,10 @@ function setupVillageActionMenuObserver() {
 
   function injectIntoMenu(menu) {
     if (!menu) return;
+    // Remove botão antigo (pode estar vinculado a outra aldeia)
+    menu.querySelector('.' + MARK_CLASS)?.remove();
     const coord = resolveCoordFromMenu(menu);
-    if (!coord) return;
-    const existing = menu.querySelector('.' + MARK_CLASS);
-    // Se já existe para esta coord, não faz nada (evita loop mutação)
-    if (existing && existing.dataset.coord === coord) return;
-    if (existing) existing.remove();
+    if (!coord) { console.log('[EOS mark] sem coord resolvida para menu', menu); return; }
     console.log('[EOS mark] injetar botão para', coord);
 
     const isMarked = markedVillages.has(coord);
@@ -2233,7 +2231,6 @@ function setupVillageActionMenuObserver() {
     const sample = menu.querySelector('a, div[onclick], img');
     const box = document.createElement('div');
     box.className = MARK_CLASS;
-    box.dataset.coord = coord;
     box.title = isMarked ? 'Desmarcar aldeia (EOS)' : 'Marcar aldeia (EOS)';
     box.style.cssText = `display:flex;align-items:center;justify-content:center;
       width:28px;height:28px;margin:2px auto;border-radius:4px;cursor:pointer;
@@ -2272,9 +2269,13 @@ function setupVillageActionMenuObserver() {
     injectIntoMenu(tt);
   }
 
-  // Poll simples (sem observer — evita risco de loop de mutação)
+  // Watcher genérico para quaisquer mudanças no #tooltip
+  const obs = new MutationObserver(() => tryInjectTooltip());
+  obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+
+  // Poll fallback: de 500 em 500ms, verifica se #tooltip está visível
   setInterval(tryInjectTooltip, 500);
-  console.log('[EOS mark] poll de tooltip iniciado');
+  console.log('[EOS mark] observer de tooltip iniciado');
 
 }
 
