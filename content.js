@@ -2246,6 +2246,31 @@ function setupVillageActionMenuObserver() {
     }
   });
   obs.observe(document.body, { childList: true, subtree: true });
+
+  // DIAGNÓSTICO: quando clica numa aldeia, loga elementos novos visíveis
+  document.addEventListener('click', (e) => {
+    const village = e.target.closest?.('[id^="map_village_"]');
+    if (!village) return;
+    console.log('[EOS mark-debug] clique em', village.id);
+    const snapshot = new Set(document.querySelectorAll('*'));
+    setTimeout(() => {
+      const now = document.querySelectorAll('*');
+      const added = [];
+      for (const el of now) {
+        if (snapshot.has(el)) continue;
+        if (!(el instanceof HTMLElement)) continue;
+        if (el.offsetHeight === 0) continue;
+        if (!el.className && !el.id) continue;
+        added.push({
+          tag: el.tagName,
+          id: el.id,
+          classes: typeof el.className === 'string' ? el.className : '',
+          children: el.children.length,
+        });
+      }
+      console.log('[EOS mark-debug] novos elementos:', added.slice(0, 30));
+    }, 150);
+  }, true);
 }
 
 function setupPopupObserver() {
