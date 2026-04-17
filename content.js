@@ -607,6 +607,12 @@ function extractTWGroups() {
     const winGroupsKeys = Array.from(document.querySelectorAll('span.quickedit-group'))
       .map(el => el.getAttribute('data-id'));
     console.log('[EOS groups] quickedit-group spans:', winGroupsKeys.length, winGroupsKeys.join(','));
+    // Dump id + textContent de cada quickedit-group para ver o que extractText devolve
+    Array.from(document.querySelectorAll('span.quickedit-group')).forEach(el => {
+      const id = el.getAttribute('data-id');
+      const text = (el.textContent || '').trim().replace(/\s+/g, ' ');
+      console.log('  span', id, '→', JSON.stringify(text.slice(0, 60)));
+    });
   } else {
     raw = [];
     const sel = document.querySelector('select#group_id, select[name="group_id"]');
