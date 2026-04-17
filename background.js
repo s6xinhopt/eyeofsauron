@@ -485,8 +485,50 @@ chrome.runtime.onMessage.addListener((message, sender) => {
         args: [message.troops || {}],
       }).catch(e => console.warn('[EOS bg] FILL_SUPPORT_MAIN falhou:', e));
     }
+  } else if (message.type === 'READ_AVAILABLE_MAIN') {
+    if (sender.tab?.id) {
+      chrome.scripting.executeScript({
+        target: { tabId: sender.tab.id },
+        world: 'MAIN',
+        func: readAvailableTroopsMain,
+      }).catch(e => console.warn('[EOS bg] READ_AVAILABLE_MAIN falhou:', e));
+    }
   }
 });
+
+// Lê tropas disponíveis por aldeia na page place&mode=call via jQuery (MAIN world)
+// Posta resultado para o content script via window.postMessage
+function readAvailableTroopsMain() {
+  try {
+    if (typeof $ === 'undefined') {
+      console.warn('[EOS available] jQuery não disponível');
+      window.postMessage({ type: 'EOS_AVAILABLE_DATA', byVid: {} }, '*');
+      return;
+    }
+    const UNITS = ['spear','sword','axe','archer','spy','light','marcher','heavy','ram','catapult','knight','snob'];
+    const rows = Array.from(document.querySelectorAll('#village_troup_list tbody tr'));
+    const byVid = {};
+    for (const row of rows) {
+      // Link da aldeia na row tem ?village=VID
+      const link = row.querySelector('a[href*="screen=info_village"], a[href*="village="]');
+      if (!link) continue;
+      const vidMatch = (link.getAttribute('href') || '').match(/village=(\d+)|[?&]id=(\d+)/);
+      const vid = vidMatch && (vidMatch[1] || vidMatch[2]);
+      if (!vid) continue;
+      const troops = {};
+      for (const u of UNITS) {
+        const n = parseInt(($(row).find(`[data-unit='${u}']`).text() || '').replace(/\D/g, '')) || 0;
+        if (n > 0) troops[u] = n;
+      }
+      if (Object.keys(troops).length > 0) byVid[vid] = troops;
+    }
+    console.log('[EOS available MAIN] aldeias lidas:', Object.keys(byVid).length);
+    window.postMessage({ type: 'EOS_AVAILABLE_DATA', byVid }, '*');
+  } catch (e) {
+    console.error('[EOS available MAIN] erro:', e);
+    window.postMessage({ type: 'EOS_AVAILABLE_DATA', byVid: {} }, '*');
+  }
+}
 
 // Clica no botão "Enviar apoio" do TW no MAIN world (handlers JS funcionam)
 function clickTWSupportSubmit() {

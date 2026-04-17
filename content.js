@@ -1168,20 +1168,24 @@ async function main() {
       if (!res.ok) throw new Error(`Servidor: ${res.status}`);
     }
 
-    // Enviar aldeias (85% → 98%)
+    // Guarda localmente para 2ª fase (place&mode=call lê disponíveis e faz merge)
     if (villages.length > 0) {
-      showOverlay(`⚔️ A enviar ${villages.length} aldeias...`, 'info', 85);
-      const res = await fetch(`${EOS_SERVER}/api/village-troops`, {
-        method: 'POST', headers: hdrs,
-        body: JSON.stringify({ villages, groupId })
+      showOverlay(`⚔️ A abrir praça para ler tropas na aldeia...`, 'info', 85);
+      // Primeira aldeia do utilizador serve de target para renderizar place&mode=call
+      const firstVid = villages[0].village_id;
+      await setWorldStorage({
+        pendingAvailableExtract: true,
+        pendingAvailableSnapshot: villages,
+        pendingAvailableGroupId: groupId,
       });
-      if (!res.ok) throw new Error(`Servidor: ${res.status}`);
+      // Abre tab place&mode=call — deteta flag e completa o fluxo
+      const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?village=${firstVid}&screen=place&mode=call&target=${firstVid}`;
+      chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
     }
 
-    showOverlay(`⚔️ A finalizar...`, 'info', 100);
     await setWorldStorage({ pendingTroopRequest: false });
-    showOverlay(`✔ ${villages.length} aldeias guardadas!`, 'ok');
-    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 500);
+    showOverlay(`✔ Fase 1 concluída — a ler disponíveis...`, 'ok');
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 800);
 
   } catch (err) {
     await setWorldStorage({ pendingTroopRequest: false });
@@ -2885,7 +2889,88 @@ function injectSyncReportButton() {
 }
 
 // ── Auto-processar apoio em place.php?mode=call ────────────────────────────
+// Se a tab place&mode=call foi aberta pela fase 2 de sync de tropas, lê
+// as disponíveis por aldeia, faz merge com o snapshot da fase 1, POST, fecha.
+async function extractAvailableIfPending() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('screen') !== 'place' || params.get('mode') !== 'call') return false;
+
+  const data = await getWorldStorage('pendingAvailableExtract', 'pendingAvailableSnapshot', 'pendingAvailableGroupId', 'token');
+  if (!data.pendingAvailableExtract) return false;
+  if (!Array.isArray(data.pendingAvailableSnapshot)) return false;
+
+  showOverlay('⚔️ A ler tropas disponíveis…', 'info', 30);
+  await waitForCallTable();
+  await new Promise(r => setTimeout(r, 400));
+
+  // Lê via MAIN world (jQuery do TW)
+  const availableByVid = await readAvailableViaMainWorld();
+  if (!availableByVid) {
+    await setWorldStorage({ pendingAvailableExtract: false, pendingAvailableSnapshot: null });
+    showOverlay('❌ Não foi possível ler tropas disponíveis', 'error');
+    setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 2500);
+    return true;
+  }
+
+  // Merge: snapshot (troops_total só) + troops_own = APENAS disponíveis lidas agora
+  // (se aldeia não aparecer aqui, troops_own fica null em vez de usar valor antigo)
+  const villages = data.pendingAvailableSnapshot.map(v => {
+    const avail = availableByVid[String(v.village_id)];
+    return {
+      village_id:     v.village_id,
+      village_name:   v.village_name,
+      village_coords: v.village_coords,
+      troops_total:   v.troops_total,
+      troops_own:     avail || null,
+    };
+  });
+
+  showOverlay(`⚔️ A enviar ${villages.length} aldeias…`, 'info', 75);
+  try {
+    const ver = chrome.runtime.getManifest().version;
+    const res = await fetch(`${EOS_SERVER}/api/village-troops`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${data.token}`,
+        'X-EOS-Version': ver,
+      },
+      body: JSON.stringify({ villages, groupId: data.pendingAvailableGroupId || '0' }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    showOverlay(`✔ ${villages.length} aldeias guardadas!`, 'ok', 100);
+  } catch (e) {
+    showOverlay('❌ ' + e.message, 'error');
+  }
+  await setWorldStorage({
+    pendingAvailableExtract: false,
+    pendingAvailableSnapshot: null,
+    pendingAvailableGroupId: null,
+  });
+  setTimeout(() => { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); window.close(); }, 1200);
+  return true;
+}
+
+// Injeta script MAIN world para ler tropas disponíveis via jQuery + data-unit
+function readAvailableViaMainWorld() {
+  return new Promise(resolve => {
+    const listener = (e) => {
+      if (!e.data || e.data.type !== 'EOS_AVAILABLE_DATA') return;
+      window.removeEventListener('message', listener);
+      resolve(e.data.byVid || {});
+    };
+    window.addEventListener('message', listener);
+    // Timeout de segurança
+    setTimeout(() => { window.removeEventListener('message', listener); resolve(null); }, 6000);
+    chrome.runtime.sendMessage({ type: 'READ_AVAILABLE_MAIN' });
+  });
+}
+
 async function autoFillSupportIfPending() {
+  // Se está a decorrer extração de disponíveis (fase 2 de sync de tropas),
+  // não interferir com o apoio em massa
+  const check = await getWorldStorage('pendingAvailableExtract');
+  if (check.pendingAvailableExtract) return;
   const params = new URLSearchParams(window.location.search);
   if (params.get('screen') !== 'place' || params.get('mode') !== 'call') return;
 
@@ -3232,7 +3317,7 @@ registerRecipeFn('findAwayTable', () => {
   return null;
 });
 
-function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); autoFillSupportIfPending(); checkPendingSupportRequests(); }
+function boot() { main(); waitForQuestlog(); checkTroopConfirmation(); initMapOverlay(); checkUpdateNotification(); injectSyncReportButton(); extractAvailableIfPending(); autoFillSupportIfPending(); checkPendingSupportRequests(); }
 
 // Verifica pedidos de apoio pendentes para o jogador atual e mostra banner persistente
 async function checkPendingSupportRequests() {
