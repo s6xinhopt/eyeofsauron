@@ -3452,7 +3452,9 @@ window.addEventListener('message', (event) => {
     }
 
     if (event.data.type === 'EOS_EXTRACT_GROUPS_REQUEST') {
-      const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups`;
+      // type=static = página dos grupos manuais. Esta página lista TODOS os
+      // grupos (manuais + dinâmicos). A de dinâmicos só lista os dinâmicos.
+      const url = `https://${CURRENT_WORLD}.tribalwars.com.pt/game.php?screen=overview_villages&mode=groups&type=static`;
       chrome.storage.local.set({ pendingGroupsExtract: true });
       chrome.runtime.sendMessage({ type: 'CREATE_TAB', url, active: false });
       return;
