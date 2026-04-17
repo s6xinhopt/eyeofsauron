@@ -959,7 +959,11 @@ async function checkTroopConfirmation() {
     if (eosToken) {
       fetch(`${EOS_SERVER}/api/members`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${eosToken}`,
+          'X-EOS-Version': chrome.runtime.getManifest().version,
+        },
         body: JSON.stringify({ action: 'refuse_troop_request' })
       }).catch(() => {});
     }
@@ -1001,7 +1005,11 @@ async function main() {
           try {
             const res = await fetch(`${EOS_SERVER}/api/tw-groups`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${eosToken}`,
+                'X-EOS-Version': chrome.runtime.getManifest().version,
+              },
               body: JSON.stringify({ groups })
             });
             postStatus = `recipe HTTP ${res.status}`;
@@ -3203,7 +3211,10 @@ async function checkPendingSupportRequests() {
       const { token } = await getWorldStorage('token');
       if (!token) return;
       const res = await fetch(`${EOS_SERVER}/api/support-requests?mine=true`, {
-        headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store'
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-EOS-Version': chrome.runtime.getManifest().version,
+        }, cache: 'no-store'
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -3410,7 +3421,11 @@ window.addEventListener('message', (event) => {
         try {
           const res = await fetch(`${EOS_SERVER}/api/tw-groups`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+              'X-EOS-Version': chrome.runtime.getManifest().version,
+            },
             body: JSON.stringify({ groups })
           });
           postStatus = `pageReader HTTP ${res.status}`;
