@@ -597,6 +597,16 @@ function extractTWGroups() {
   if (recipe) {
     raw = runRecipe(recipe) || [];
     console.log('[EOS groups] recipe raw:', raw.length, raw.map(g => `${g.id}:${g.name}`).join(' | '));
+    // Diagnóstico: lista todos os data-id numéricos no DOM
+    const allDataIds = Array.from(document.querySelectorAll('[data-id]'))
+      .map(el => el.getAttribute('data-id'))
+      .filter(id => /^\d+$/.test(id));
+    const uniqueIds = [...new Set(allDataIds)];
+    console.log('[EOS groups] DOM data-id únicos:', uniqueIds.length, uniqueIds.join(','));
+    // Verifica se há window.Groups acessível via data attribute
+    const winGroupsKeys = Array.from(document.querySelectorAll('span.quickedit-group'))
+      .map(el => el.getAttribute('data-id'));
+    console.log('[EOS groups] quickedit-group spans:', winGroupsKeys.length, winGroupsKeys.join(','));
   } else {
     raw = [];
     const sel = document.querySelector('select#group_id, select[name="group_id"]');
