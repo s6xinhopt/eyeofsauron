@@ -967,6 +967,13 @@ async function checkTroopConfirmation() {
 }
 
 async function main() {
+  // Diagnostico: imprime último estado de sync de grupos
+  try {
+    const d = await getStorage('eosLastGroupsSync', 'twGroups');
+    if (d.eosLastGroupsSync) console.log('[EOS groups] último sync:', d.eosLastGroupsSync);
+    if (Array.isArray(d.twGroups)) console.log('[EOS groups] twGroups local:', d.twGroups.length, d.twGroups.map(g => g.name).join(', '));
+  } catch (_) {}
+
   // Página de grupos: só extrai se aberta pela extensão
   if (isGroupsPage()) {
     const { pendingGroupsExtract } = await getStorage('pendingGroupsExtract');
