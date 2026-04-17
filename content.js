@@ -1017,18 +1017,21 @@ async function main() {
 
     let attempts = 0;
     const tryExtract = async () => {
-      // Union: combinar recipe (DOM) com twGroups já guardados por page_reader
+      // Union: recipe (DOM) + window.Groups (chave temporária separada, só deste ciclo)
       const recipeGroups = extractTWGroups() || [];
-      const stored = await getStorage('twGroups');
-      const prev = Array.isArray(stored.twGroups) ? stored.twGroups : [];
+      const stored = await getStorage('twGroupsFromWindow');
+      const fromWindow = Array.isArray(stored.twGroupsFromWindow) ? stored.twGroupsFromWindow : [];
       const merged = [];
       const seen = new Set();
-      for (const g of [...prev, ...recipeGroups]) {
+      for (const g of [...fromWindow, ...recipeGroups]) {
         const sid = String(g.id || '');
         if (!sid || sid === '0' || seen.has(sid) || !g.name) continue;
         seen.add(sid);
         merged.push({ id: sid, name: String(g.name).trim() });
       }
+      console.log('[EOS groups] window.Groups:', fromWindow.length, '| recipe:', recipeGroups.length, '| union:', merged.length);
+      // Limpa a chave temporária para não contaminar próxima sincronização
+      await chrome.storage.local.remove(['twGroupsFromWindow']);
       const groups = merged.length > 0 ? merged : null;
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
@@ -3445,9 +3448,8 @@ window.addEventListener('message', (event) => {
   if (event.data.type === 'EOS_GROUPS_DATA' && Array.isArray(event.data.groups)) {
     const groups = event.data.groups;
     (async () => {
-      // Guarda mas NÃO cancela pendingGroupsExtract — o recipe corre depois e
-      // faz a união (page_reader pode perder o grupo atualmente selecionado)
-      await chrome.storage.local.set({ twGroups: groups });
+      // Guarda em chave temporária — recipe fará união e escreverá twGroups final
+      await chrome.storage.local.set({ twGroupsFromWindow: groups });
       const { token } = await getWorldStorage('token');
       let postStatus = 'no-token';
       if (token) {
