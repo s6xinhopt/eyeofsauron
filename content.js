@@ -978,15 +978,21 @@ async function main() {
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
         const { token: eosToken } = await getWorldStorage('token');
+        // Aguardar o POST completar ANTES de fechar a tab (senão fica abortado)
         if (eosToken) {
-          fetch(`${EOS_SERVER}/api/tw-groups`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
-            body: JSON.stringify({ groups })
-          }).catch(() => {});
+          try {
+            const res = await fetch(`${EOS_SERVER}/api/tw-groups`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
+              body: JSON.stringify({ groups })
+            });
+            console.log('[EOS groups] POST', res.status, await res.text().catch(()=>''));
+          } catch (e) {
+            console.warn('[EOS groups] POST falhou:', e);
+          }
         }
         showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
-        setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 1500);
+        setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 2500);
       } else if (attempts++ < 20) setTimeout(tryExtract, 300);
     };
     tryExtract();
@@ -3371,19 +3377,24 @@ window.addEventListener('message', (event) => {
 
   if (event.data.type === 'EOS_GROUPS_DATA' && Array.isArray(event.data.groups)) {
     const groups = event.data.groups;
-    chrome.storage.local.set({ twGroups: groups });
-    // POSTa para o servidor (window.Groups é fonte mais completa que o DOM)
-    getWorldStorage('token').then(({ token }) => {
+    (async () => {
+      await chrome.storage.local.set({ twGroups: groups });
+      const { token } = await getWorldStorage('token');
       if (token) {
-        fetch(`${EOS_SERVER}/api/tw-groups`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ groups })
-        }).catch(() => {});
+        try {
+          const res = await fetch(`${EOS_SERVER}/api/tw-groups`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ groups })
+          });
+          console.log('[EOS groups page_reader] POST', res.status);
+        } catch (e) {
+          console.warn('[EOS groups page_reader] POST falhou:', e);
+        }
       }
-    });
-    showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
-    setTimeout(() => window.close(), 1500);
+      showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
+      setTimeout(() => window.close(), 2500);
+    })();
   }
 
 });
