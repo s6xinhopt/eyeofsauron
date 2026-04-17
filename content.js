@@ -972,11 +972,18 @@ async function main() {
     const { pendingGroupsExtract } = await getStorage('pendingGroupsExtract');
     if (!pendingGroupsExtract) return;
 
+    // Atraso 3s para dar prioridade ao page_reader (document_idle) que lê
+    // window.Groups — fonte autoritativa. Recipe só corre em fallback.
+    await new Promise(r => setTimeout(r, 3000));
+
     let attempts = 0;
     const tryExtract = async () => {
       // Se entretanto o page_reader (window.Groups) já completou, bail out
       const check = await getStorage('pendingGroupsExtract');
-      if (!check.pendingGroupsExtract) return;
+      if (!check.pendingGroupsExtract) {
+        console.log('[EOS groups] recipe cancelada — page_reader venceu');
+        return;
+      }
       const groups = extractTWGroups();
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
