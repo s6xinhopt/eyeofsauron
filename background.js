@@ -460,7 +460,20 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     const worldMatch = tabUrl.match(/^https?:\/\/([a-z0-9]+)\.tribalwars\.com\.pt/);
     const world = worldMatch ? worldMatch[1] : null;
     if (sender.tab?.id) chrome.tabs.remove(sender.tab.id);
-    if (world) setTimeout(() => processReportQueue(world), 500);
+    // Só processa o próximo da fila quando AMBAS as fases terminaram
+    // (ignora fechar da tab de fase 1 enquanto fase 2 ainda pendente)
+    if (world) {
+      setTimeout(async () => {
+        const availKey = worldKey(world, 'pendingAvailableExtract');
+        const pendKey = worldKey(world, 'pendingTroopRequest');
+        const state = await chrome.storage.local.get([availKey, pendKey]);
+        if (state[availKey] || state[pendKey]) {
+          console.log(`[EOS CLOSE_TAB] fase ainda pendente em ${world}, a aguardar`);
+          return;
+        }
+        processReportQueue(world);
+      }, 500);
+    }
   } else if (message.type === 'SYNC_SCHEDULES') {
     if (message.token && message.world) syncSchedules(message.world, message.token);
   } else if (message.type === 'OPEN_PANEL') {
