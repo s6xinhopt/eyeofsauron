@@ -639,7 +639,9 @@ function extractTWGroups() {
   // Dedup e validação (fica em código — mais simples que fazer no recipe)
   const seen = new Set(); const groups = [];
   for (const g of raw) {
-    const sid = String(g.id || ''); const n = (g.name || '').trim();
+    const sid = String(g.id || '');
+    // Limpa `>` `<` e espaços que aparecem à volta do nome do grupo SELECIONADO
+    const n = (g.name || '').trim().replace(/^[><\s]+|[><\s]+$/g, '').trim();
     if (!sid || sid === '0' || seen.has(sid) || !n) continue;
     seen.add(sid); groups.push({ id: sid, name: n });
   }
