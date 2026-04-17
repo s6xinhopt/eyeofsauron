@@ -967,6 +967,7 @@ async function checkTroopConfirmation() {
 }
 
 async function main() {
+  console.log('[EOS] v' + chrome.runtime.getManifest().version + ' main() start');
   // Diagnostico: imprime SEMPRE (mesmo vazio)
   try {
     const d = await getStorage('eosLastGroupsSync', 'twGroups');
