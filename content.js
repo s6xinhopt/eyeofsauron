@@ -3299,6 +3299,12 @@ registerRecipeFn('filterNonZero', (obj) => {
 // Acesso a sub-objeto por chave (útil para chaining em recipes)
 registerRecipeFn('getKey', (obj, key) => obj?.[key] ?? null);
 
+// Lê parâmetro da URL atual
+registerRecipeFn('getUrlParam', (name) => {
+  try { return new URLSearchParams(window.location.search).get(name) || null; }
+  catch { return null; }
+});
+
 // Procura tabela "Unidades fora da aldeia" (com fallback por heading)
 registerRecipeFn('findAwayTable', () => {
   const direct = document.querySelector('#attack_spy_away')
