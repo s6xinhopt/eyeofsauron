@@ -967,12 +967,12 @@ async function checkTroopConfirmation() {
 }
 
 async function main() {
-  // Diagnostico: imprime último estado de sync de grupos
+  // Diagnostico: imprime SEMPRE (mesmo vazio)
   try {
     const d = await getStorage('eosLastGroupsSync', 'twGroups');
-    if (d.eosLastGroupsSync) console.log('[EOS groups] último sync:', d.eosLastGroupsSync);
-    if (Array.isArray(d.twGroups)) console.log('[EOS groups] twGroups local:', d.twGroups.length, d.twGroups.map(g => g.name).join(', '));
-  } catch (_) {}
+    console.log('[EOS groups] último sync:', d.eosLastGroupsSync || '(nenhum)',
+                '| twGroups local:', Array.isArray(d.twGroups) ? d.twGroups.length : '(vazio)');
+  } catch (e) { console.warn('[EOS groups] diagnostic err:', e); }
 
   // Página de grupos: só extrai se aberta pela extensão
   if (isGroupsPage()) {
