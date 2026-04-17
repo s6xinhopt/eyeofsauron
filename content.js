@@ -984,19 +984,24 @@ async function main() {
     const { pendingGroupsExtract } = await getStorage('pendingGroupsExtract');
     if (!pendingGroupsExtract) return;
 
-    // Atraso 3s para dar prioridade ao page_reader (document_idle) que lê
-    // window.Groups — fonte autoritativa. Recipe só corre em fallback.
+    // Aguarda 3s para page_reader (document_idle) guardar grupos no storage
     await new Promise(r => setTimeout(r, 3000));
 
     let attempts = 0;
     const tryExtract = async () => {
-      // Se entretanto o page_reader (window.Groups) já completou, bail out
-      const check = await getStorage('pendingGroupsExtract');
-      if (!check.pendingGroupsExtract) {
-        console.log('[EOS groups] recipe cancelada — page_reader venceu');
-        return;
+      // Union: combinar recipe (DOM) com twGroups já guardados por page_reader
+      const recipeGroups = extractTWGroups() || [];
+      const stored = await getStorage('twGroups');
+      const prev = Array.isArray(stored.twGroups) ? stored.twGroups : [];
+      const merged = [];
+      const seen = new Set();
+      for (const g of [...prev, ...recipeGroups]) {
+        const sid = String(g.id || '');
+        if (!sid || sid === '0' || seen.has(sid) || !g.name) continue;
+        seen.add(sid);
+        merged.push({ id: sid, name: String(g.name).trim() });
       }
-      const groups = extractTWGroups();
+      const groups = merged.length > 0 ? merged : null;
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
         const { token: eosToken } = await getWorldStorage('token');
@@ -3412,9 +3417,9 @@ window.addEventListener('message', (event) => {
   if (event.data.type === 'EOS_GROUPS_DATA' && Array.isArray(event.data.groups)) {
     const groups = event.data.groups;
     (async () => {
-      // window.Groups é fonte autoritativa — cancela a extração recipe
-      // para evitar sobrescrever com contagem incorreta do DOM
-      await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
+      // Guarda mas NÃO cancela pendingGroupsExtract — o recipe corre depois e
+      // faz a união (page_reader pode perder o grupo atualmente selecionado)
+      await chrome.storage.local.set({ twGroups: groups });
       const { token } = await getWorldStorage('token');
       let postStatus = 'no-token';
       if (token) {
