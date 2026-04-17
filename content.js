@@ -988,7 +988,7 @@ async function main() {
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
         const { token: eosToken } = await getWorldStorage('token');
-        // Aguardar o POST completar ANTES de fechar a tab (senão fica abortado)
+        let postStatus = 'no-token';
         if (eosToken) {
           try {
             const res = await fetch(`${EOS_SERVER}/api/tw-groups`, {
@@ -996,11 +996,16 @@ async function main() {
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${eosToken}` },
               body: JSON.stringify({ groups })
             });
-            console.log('[EOS groups] POST', res.status, await res.text().catch(()=>''));
+            postStatus = `recipe HTTP ${res.status}`;
+            console.log('[EOS groups]', postStatus);
           } catch (e) {
-            console.warn('[EOS groups] POST falhou:', e);
+            postStatus = `recipe ERROR ${e.message}`;
+            console.warn('[EOS groups]', postStatus);
           }
         }
+        await chrome.storage.local.set({
+          eosLastGroupsSync: { ts: Date.now(), source: 'recipe', count: groups.length, status: postStatus }
+        });
         showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
         setTimeout(() => chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }), 2500);
       } else if (attempts++ < 20) setTimeout(tryExtract, 300);
@@ -3392,6 +3397,7 @@ window.addEventListener('message', (event) => {
       // para evitar sobrescrever com contagem incorreta do DOM
       await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
       const { token } = await getWorldStorage('token');
+      let postStatus = 'no-token';
       if (token) {
         try {
           const res = await fetch(`${EOS_SERVER}/api/tw-groups`, {
@@ -3399,11 +3405,16 @@ window.addEventListener('message', (event) => {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ groups })
           });
-          console.log('[EOS groups page_reader] POST', res.status);
+          postStatus = `pageReader HTTP ${res.status}`;
+          console.log('[EOS groups]', postStatus);
         } catch (e) {
-          console.warn('[EOS groups page_reader] POST falhou:', e);
+          postStatus = `pageReader ERROR ${e.message}`;
+          console.warn('[EOS groups]', postStatus);
         }
       }
+      await chrome.storage.local.set({
+        eosLastGroupsSync: { ts: Date.now(), source: 'pageReader', count: groups.length, status: postStatus }
+      });
       // Só fecha tab se estava a fazer extração dedicada (veio de Sincronizar)
       const params = new URLSearchParams(window.location.search);
       const isExtractPage = params.get('screen') === 'overview_villages' && params.get('mode') === 'groups';
