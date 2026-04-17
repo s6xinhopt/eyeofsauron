@@ -1008,6 +1008,10 @@ async function main() {
     const { pendingGroupsExtract } = await getStorage('pendingGroupsExtract');
     if (!pendingGroupsExtract) return;
 
+    // Força fetch de config fresca (ignora cache) antes de extrair
+    console.log('[EOS groups] a forçar refresh da config...');
+    await fetchRemoteConfig();
+
     // Aguarda 3s para page_reader (document_idle) guardar grupos no storage
     await new Promise(r => setTimeout(r, 3000));
 
