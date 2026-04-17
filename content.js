@@ -545,9 +545,10 @@ function readPerVillageTroops(onProgress) {
 
     if (!currentVillage) continue;
 
-    // Row "total"
+    // Row "na aldeia" — tropas fisicamente presentes (own + apoios recebidos,
+    // mas SEM as que estão fora / em trânsito). Melhor para bunk classification.
     const firstCell = (cells[0].textContent || '').replace(/\u00a0/g, ' ').trim().toLowerCase();
-    if (firstCell === 'total') {
+    if (firstCell === 'na aldeia') {
       currentVillage.troops_total = readTroopsFromRow(cells);
     }
   }
