@@ -974,6 +974,9 @@ async function main() {
 
     let attempts = 0;
     const tryExtract = async () => {
+      // Se entretanto o page_reader (window.Groups) já completou, bail out
+      const check = await getStorage('pendingGroupsExtract');
+      if (!check.pendingGroupsExtract) return;
       const groups = extractTWGroups();
       if (groups) {
         await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
@@ -3378,7 +3381,9 @@ window.addEventListener('message', (event) => {
   if (event.data.type === 'EOS_GROUPS_DATA' && Array.isArray(event.data.groups)) {
     const groups = event.data.groups;
     (async () => {
-      await chrome.storage.local.set({ twGroups: groups });
+      // window.Groups é fonte autoritativa — cancela a extração recipe
+      // para evitar sobrescrever com contagem incorreta do DOM
+      await chrome.storage.local.set({ twGroups: groups, pendingGroupsExtract: false });
       const { token } = await getWorldStorage('token');
       if (token) {
         try {
@@ -3392,8 +3397,13 @@ window.addEventListener('message', (event) => {
           console.warn('[EOS groups page_reader] POST falhou:', e);
         }
       }
-      showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
-      setTimeout(() => window.close(), 2500);
+      // Só fecha tab se estava a fazer extração dedicada (veio de Sincronizar)
+      const params = new URLSearchParams(window.location.search);
+      const isExtractPage = params.get('screen') === 'overview_villages' && params.get('mode') === 'groups';
+      if (isExtractPage) {
+        showOverlay(`✔ ${groups.length} grupos extraídos!`, 'ok');
+        setTimeout(() => window.close(), 2500);
+      }
     })();
   }
 
