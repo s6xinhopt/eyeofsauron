@@ -45,6 +45,7 @@
                  : String(val);
       if (name) groups.push({ id, name });
     }
+    console.log('[EOS groups] page_reader window.Groups total keys:', Object.keys(window.Groups).length, 'extracted:', groups.length);
     if (groups.length > 0) {
       window.postMessage({ type: 'EOS_GROUPS_DATA', groups }, '*');
     }

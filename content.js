@@ -596,6 +596,7 @@ function extractTWGroups() {
   let raw;
   if (recipe) {
     raw = runRecipe(recipe) || [];
+    console.log('[EOS groups] recipe raw:', raw.length, raw.map(g => `${g.id}:${g.name}`).join(' | '));
   } else {
     raw = [];
     const sel = document.querySelector('select#group_id, select[name="group_id"]');
