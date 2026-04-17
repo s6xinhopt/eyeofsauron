@@ -59,8 +59,11 @@ let EOS_CONFIG = DEFAULT_CONFIG;
 
 async function loadCachedConfig() {
   try {
-    const { eosConfig, eosConfigTime } = await chrome.storage.local.get(['eosConfig', 'eosConfigTime']);
-    if (eosConfig && eosConfig.version) {
+    const { eosConfig, eosConfigTime, eosConfigExtVersion } = await chrome.storage.local.get(['eosConfig', 'eosConfigTime', 'eosConfigExtVersion']);
+    const curExtVersion = chrome.runtime.getManifest().version;
+    // Se a versão da extensão mudou desde a última cache, invalida
+    const versionChanged = eosConfigExtVersion !== curExtVersion;
+    if (eosConfig && eosConfig.version && !versionChanged) {
       EOS_CONFIG = eosConfig;
       // Refresh em background se for antigo
       if (!eosConfigTime || Date.now() - eosConfigTime > EOS_CONFIG.intervals.configRefreshMs) {
@@ -69,8 +72,8 @@ async function loadCachedConfig() {
       return;
     }
   } catch (_) {}
-  // Primeira carga: tenta ir buscar já
-  fetchRemoteConfig();
+  // Primeira carga OU versão nova: vai buscar já
+  await fetchRemoteConfig();
 }
 
 async function fetchRemoteConfig() {
@@ -80,7 +83,11 @@ async function fetchRemoteConfig() {
     const cfg = await res.json();
     if (cfg && cfg.version) {
       EOS_CONFIG = cfg;
-      await chrome.storage.local.set({ eosConfig: cfg, eosConfigTime: Date.now() });
+      await chrome.storage.local.set({
+        eosConfig: cfg,
+        eosConfigTime: Date.now(),
+        eosConfigExtVersion: chrome.runtime.getManifest().version,
+      });
       console.log('[EOS] Config atualizada, version:', cfg.version);
     }
   } catch (e) { console.warn('[EOS] Falha a carregar config:', e); }
