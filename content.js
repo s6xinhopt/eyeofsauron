@@ -1662,7 +1662,7 @@ function renderMarkButtons() {
     mb.innerHTML = `
       <span style="position:relative;display:inline-block;line-height:1">
         🎯
-        <span style="position:absolute;top:-3px;right:-4px;width:10px;height:10px;border-radius:50%;
+        <span style="position:absolute;top:-3px;right:-1px;width:8px;height:8px;border-radius:50%;
           background:${m.color};border:1.5px solid #14100a;box-shadow:0 0 4px ${m.color}aa"></span>
       </span>`;
     mb.addEventListener('click', () => setActiveMark(m.id));
