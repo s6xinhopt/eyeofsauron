@@ -1367,9 +1367,12 @@ let mapAnimation   = 'float';  // 'none'|'float'|'pulse'|'shake'|'glow'|'spin'|'
 let colorSkull     = '#2a1010';
 let colorAxe       = '#c02020';
 let colorSword     = '#20305a';
-let colorMark      = '#e04040';  // cor da moldura de aldeias marcadas manualmente
-let markSelectionMode = false;    // quando true, clique em aldeia marca/desmarca
-let markedVillages    = new Set(); // coords "XXX|YYY" marcadas
+// Lista de marcas personalizáveis (múltiplas cores/nomes)
+let marks = [ { id: 'default', name: 'Padrão', color: '#e04040' } ];
+let activeMarkId = null;               // id da marca atualmente ativa (clique marca com esta)
+let markedVillages = {};               // { [coord]: markId }
+// Aliases legados
+let colorMark         = '#e04040';     // usado só pelo botão 🎯 legado
 let streamerMode   = false;
 const STREAMER_SHIELD_COLOR = '#5a5a5a';  // cinza neutro para ocultar tier
 
@@ -1544,11 +1547,31 @@ async function initMapOverlay() {
   if (typeof eosColorSword === 'string') colorSword = eosColorSword;
   if (eosStreamerMode === true) streamerMode = true;
   if (typeof eosColorMark === 'string') colorMark = eosColorMark;
-  // Carrega lista de aldeias marcadas (per-world)
+  // Carrega marcas definidas pelo utilizador
+  try {
+    const { eosMarks } = await getStorage('eosMarks');
+    if (Array.isArray(eosMarks) && eosMarks.length > 0) {
+      marks = eosMarks;
+    } else if (eosColorMark) {
+      // Migração: converte a antiga cor única num mark 'default'
+      marks = [{ id: 'default', name: 'Padrão', color: eosColorMark }];
+    }
+  } catch (_) {}
+
+  // Carrega aldeias marcadas (per-world) — suporta formato antigo (Set) ou novo ({coord:markId})
   try {
     const markKey = `eosMarkedVillages.${CURRENT_WORLD || 'default'}`;
     const mStore = await getStorage(markKey);
-    if (Array.isArray(mStore[markKey])) markedVillages = new Set(mStore[markKey]);
+    const raw = mStore[markKey];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      markedVillages = raw;
+    } else if (Array.isArray(raw)) {
+      // Migração: todas as antigas ficam com markId da primeira marca
+      const firstId = marks[0]?.id || 'default';
+      markedVillages = {};
+      for (const c of raw) markedVillages[c] = firstId;
+      await chrome.storage.local.set({ [markKey]: markedVillages });
+    }
   } catch (_) {}
 
   // Observa o popup nativo do TW para injetar dados de tropas
@@ -1613,52 +1636,68 @@ function injectMapSettingsButton() {
     mapEl.style.position = 'relative';
     mapEl.appendChild(btn);
 
-    // Botão de marcação de aldeias (🎯) — ao lado do settings
-    const markBtn = document.createElement('div');
-    markBtn.id = 'eos-map-mark-btn';
-    markBtn.title = 'Marcar aldeias (clica para ativar)';
-    markBtn.style.cssText = `position:absolute;top:5px;right:42px;width:30px;height:30px;z-index:99999;cursor:pointer;
-      background:linear-gradient(135deg,#5a4430,#3a2818);border:1.5px solid #c0a060;border-radius:6px;
-      display:flex;align-items:center;justify-content:center;font-size:16px;
-      box-shadow:0 2px 8px rgba(0,0,0,0.5);transition:all .2s`;
-    markBtn.textContent = '🎯';
-    markBtn.addEventListener('mouseenter', () => { if (!markSelectionMode) markBtn.style.borderColor = '#e87830'; });
-    markBtn.addEventListener('mouseleave', () => { if (!markSelectionMode) markBtn.style.borderColor = '#c0a060'; });
-    markBtn.addEventListener('click', () => toggleMarkSelectionMode(markBtn));
-    mapEl.appendChild(markBtn);
+    renderMarkButtons();
   }, 500);
 }
 
-function toggleMarkSelectionMode(btn) {
-  markSelectionMode = !markSelectionMode;
-  // Avisa MAIN world para intercetar/libertar cliques no mapa
-  try { window.postMessage({ type: 'EOS_SET_MARK_MODE', active: markSelectionMode }, '*'); } catch (_) {}
-  if (btn) {
-    btn.style.background = markSelectionMode
-      ? `linear-gradient(135deg,${colorMark},${colorMark}aa)`
-      : 'linear-gradient(135deg,#5a4430,#3a2818)';
-    btn.style.borderColor = markSelectionMode ? colorMark : '#c0a060';
-    btn.style.boxShadow = markSelectionMode
-      ? `0 0 12px ${colorMark}80, 0 2px 8px rgba(0,0,0,0.5)`
-      : '0 2px 8px rgba(0,0,0,0.5)';
-    btn.title = markSelectionMode
-      ? 'Modo marcação ATIVO — clica numa aldeia para marcar'
-      : 'Marcar aldeias (clica para ativar)';
+// Redesenha os botões de marcas na toolbar do mapa (um por entrada em marks[])
+function renderMarkButtons() {
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return;
+  // Remove botões antigos
+  mapEl.querySelectorAll('.eos-map-mark-btn').forEach(el => el.remove());
+  let offset = 42;  // posição à esquerda do settings btn (que está em right:5)
+  for (const m of marks) {
+    const mb = document.createElement('div');
+    mb.className = 'eos-map-mark-btn';
+    mb.dataset.markId = m.id;
+    mb.title = m.name + ' (clica para ativar)';
+    const isActive = activeMarkId === m.id;
+    mb.style.cssText = `position:absolute;top:5px;right:${offset}px;width:30px;height:30px;z-index:99999;cursor:pointer;
+      background:${isActive ? `linear-gradient(135deg,${m.color},${m.color}aa)` : 'linear-gradient(135deg,#5a4430,#3a2818)'};
+      border:1.5px solid ${isActive ? m.color : '#c0a060'};border-radius:6px;
+      display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;font-weight:700;
+      box-shadow:${isActive ? `0 0 12px ${m.color}80, 0 2px 8px rgba(0,0,0,0.5)` : '0 2px 8px rgba(0,0,0,0.5)'};
+      transition:all .2s`;
+    mb.innerHTML = `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${m.color};border:1.5px solid rgba(255,255,255,.7)"></span>`;
+    mb.addEventListener('click', () => setActiveMark(m.id));
+    mapEl.appendChild(mb);
+    offset += 37;
   }
+}
+
+function setActiveMark(markId) {
+  if (activeMarkId === markId) {
+    activeMarkId = null;  // clicou o ativo → desliga
+  } else {
+    activeMarkId = markId;
+  }
+  // Avisa MAIN world para intercetar/libertar cliques no mapa
+  try { window.postMessage({ type: 'EOS_SET_MARK_MODE', active: !!activeMarkId }, '*'); } catch (_) {}
+  renderMarkButtons();
 }
 
 async function saveMarkedVillages() {
   try {
     const key = `eosMarkedVillages.${CURRENT_WORLD || 'default'}`;
-    await chrome.storage.local.set({ [key]: Array.from(markedVillages) });
+    await chrome.storage.local.set({ [key]: markedVillages });
   } catch (_) {}
 }
 
+async function saveMarks() {
+  try { await chrome.storage.local.set({ eosMarks: marks }); } catch (_) {}
+}
+
+// Toggle: aplica/remove a marca ativa a uma aldeia
 function toggleMarkVillage(coordKey) {
-  if (markedVillages.has(coordKey)) markedVillages.delete(coordKey);
-  else markedVillages.add(coordKey);
+  if (!activeMarkId) return;  // sem marca ativa, nada a fazer
+  const current = markedVillages[coordKey];
+  if (current === activeMarkId) {
+    delete markedVillages[coordKey];  // clicou de novo na mesma → remove
+  } else {
+    markedVillages[coordKey] = activeMarkId;  // atribui (sobrescreve se tinha outra)
+  }
   saveMarkedVillages();
-  // Re-renderiza para mostrar/esconder moldura
   document.querySelectorAll(`[data-eos-mark="${coordKey}"]`).forEach(el => el.remove());
   placeShields();
 }
@@ -1669,7 +1708,7 @@ function setupMarkClickHandler() {
   // Listener: recebe postMessage do MAIN world com o coord clicado
   window.addEventListener('message', (e) => {
     if (e.source !== window || !e.data || e.data.type !== 'EOS_MAP_VILLAGE_CLICK') return;
-    if (!markSelectionMode) return;
+    if (!activeMarkId) return;
     const coord = e.data.coord;
     if (!coord) return;
     toggleMarkVillage(coord);
@@ -1860,7 +1899,7 @@ function buildSettingsPanelHTML() {
               style="width:100%;accent-color:#e87830">
           </div>
 
-          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr;gap:6px;padding:10px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px;padding:10px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
             <div>
               <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">Animação</div>
               <select id="eos-anim-type" style="width:100%;padding:5px;background:#0e0c08;color:#f0e0c8;border:1px solid #3a2a1a;border-radius:4px;font-size:10px;cursor:pointer">
@@ -1885,12 +1924,21 @@ function buildSettingsPanelHTML() {
               <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">Sword</div>
               <input id="eos-color-sword" type="color" value="${colorSword}" style="width:100%;height:26px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
             </div>
-            <div>
-              <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">🎯 Marca</div>
-              <input id="eos-color-mark" type="color" value="${colorMark}" style="width:100%;height:26px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
-            </div>
           </div>
         </div>
+      </div>
+
+      <!-- ═══ Marcas customizadas ═══ -->
+      <div style="margin-bottom:16px;padding:14px;background:linear-gradient(160deg,#1f1812,#1a140e);border-radius:10px;border:1px solid #e8502020">
+        ${sectionLabel('🎯 Marcas', '#f0b878')}
+        <div style="font-size:10px;color:#8a7860;margin-bottom:10px">
+          Cria marcas com cores diferentes. Cada marca adiciona um botão no mapa. Clica num botão para o ativar e depois clica em aldeias para as marcar.
+        </div>
+        <div id="eos-marks-list" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button id="eos-add-mark" style="margin-top:10px;width:100%;padding:9px;
+          background:linear-gradient(135deg,#2e241a,#24180e);color:#f0b878;
+          border:1.5px dashed #e8783060;border-radius:6px;font-size:12px;font-weight:700;
+          cursor:pointer;letter-spacing:.5px">+ Nova marca</button>
       </div>
 
       <!-- ═══ Classificação de Bunkers (2 colunas) ═══ -->
@@ -2012,17 +2060,76 @@ function attachSettingsEvents(panel) {
   bindColorPicker('eos-color-skull', v => colorSkull = v, 'eos-toggle-skull');
   bindColorPicker('eos-color-axe',   v => colorAxe   = v, 'eos-toggle-axe');
   bindColorPicker('eos-color-sword', v => colorSword = v, 'eos-toggle-sword');
-  // Color picker da marca — sem toggle associado, só faz re-render
-  panel.querySelector('#eos-color-mark')?.addEventListener('input', (e) => {
-    colorMark = e.target.value;
-    liveRerender();
-    // Atualiza cor do botão 🎯 se estiver ativo
-    const mb = document.getElementById('eos-map-mark-btn');
-    if (mb && markSelectionMode) {
-      mb.style.background = `linear-gradient(135deg,${colorMark},${colorMark}aa)`;
-      mb.style.borderColor = colorMark;
-      mb.style.boxShadow = `0 0 12px ${colorMark}80, 0 2px 8px rgba(0,0,0,0.5)`;
-    }
+
+  // ── Marcas customizadas ────────────────────────────────────────────────
+  function renderMarksList() {
+    const list = panel.querySelector('#eos-marks-list');
+    if (!list) return;
+    list.innerHTML = '';
+    marks.forEach((m, idx) => {
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;align-items:center;gap:8px;padding:8px 10px;
+        background:linear-gradient(135deg,#2c241c,#1f1912);border:1px solid #e8502020;
+        border-left:3px solid ${m.color};border-radius:8px`;
+      row.innerHTML = `
+        <input type="color" value="${m.color}" data-mark-field="color" data-mark-id="${m.id}"
+          style="width:26px;height:26px;border:1.5px solid ${m.color}80;border-radius:50%;cursor:pointer;background:transparent;padding:0;box-shadow:0 0 8px ${m.color}40">
+        <input type="text" value="${m.name.replace(/"/g,'&quot;')}" data-mark-field="name" data-mark-id="${m.id}"
+          style="flex:1;min-width:0;background:transparent;border:none;color:#f0e0c8;font-size:13px;font-weight:700;outline:none;padding:2px 0;border-bottom:1px solid transparent"
+          placeholder="Nome da marca">
+        <button data-mark-remove="${m.id}" title="Remover marca"
+          style="background:rgba(224,80,80,.1);border:1px solid #5a2020;color:#e06868;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer"
+          ${marks.length <= 1 ? 'disabled style="opacity:.4;cursor:not-allowed;background:rgba(224,80,80,.1);border:1px solid #5a2020;color:#e06868;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700"' : ''}>✕</button>
+      `;
+      list.appendChild(row);
+    });
+    // Listeners
+    list.querySelectorAll('[data-mark-field]').forEach(inp => {
+      const evt = inp.type === 'color' ? 'input' : 'input';
+      inp.addEventListener(evt, (e) => {
+        const id = e.target.dataset.markId;
+        const field = e.target.dataset.markField;
+        const mark = marks.find(mm => mm.id === id);
+        if (!mark) return;
+        mark[field] = e.target.value;
+        saveMarks();
+        renderMarkButtons();
+        liveRerender();
+        // Atualiza a border-left visual da row
+        if (field === 'color') {
+          const row = e.target.closest('div');
+          if (row) row.style.borderLeftColor = e.target.value;
+        }
+      });
+    });
+    list.querySelectorAll('[data-mark-remove]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        if (marks.length <= 1) return;
+        const id = e.currentTarget.dataset.markRemove;
+        if (!confirm('Remover esta marca? As aldeias marcadas com ela deixam de ter moldura.')) return;
+        marks = marks.filter(mm => mm.id !== id);
+        // Limpa aldeias que usavam esta marca
+        for (const coord of Object.keys(markedVillages)) {
+          if (markedVillages[coord] === id) delete markedVillages[coord];
+        }
+        if (activeMarkId === id) activeMarkId = null;
+        saveMarks(); saveMarkedVillages();
+        renderMarksList();
+        renderMarkButtons();
+        liveRerender();
+      });
+    });
+  }
+  renderMarksList();
+
+  panel.querySelector('#eos-add-mark')?.addEventListener('click', () => {
+    const id = 'm' + Date.now().toString(36);
+    const colors = ['#e04040','#40c060','#4080e0','#e0a030','#b040e0','#40d0d0','#e04098'];
+    const nextColor = colors[marks.length % colors.length];
+    marks.push({ id, name: `Marca ${marks.length + 1}`, color: nextColor });
+    saveMarks();
+    renderMarksList();
+    renderMarkButtons();
   });
 
   // Campos dos bunk cards (ally e enemy)
@@ -2182,18 +2289,17 @@ function placeShields() {
     const top = parseInt(domVillage.style.top, 10) || 0;
     const left = parseInt(domVillage.style.left, 10) || 0;
 
-    // ── Moldura de aldeia marcada manualmente ──
-    const isMarked = markedVillages.has(coordKey);
-    if (isMarked) {
-      // Dimensões reais do sprite da aldeia (evita ultrapassar a aldeia vizinha)
+    // ── Moldura de aldeia marcada ──
+    const markId = markedVillages[coordKey];
+    const markDef = markId ? marks.find(m => m.id === markId) : null;
+    if (markDef) {
       const vw = domVillage.offsetWidth || 53;
       const vh = domVillage.offsetHeight || 28;
-      const markLeft = left;
-      const markTop  = top;
+      const c = markDef.color;
       const markCss = `position:absolute;pointer-events:none;z-index:19;
-          left:${markLeft}px;top:${markTop}px;width:${vw}px;height:${vh}px;
-          border:2px solid ${colorMark};border-radius:3px;
-          box-shadow:0 0 6px ${colorMark}aa,inset 0 0 4px ${colorMark}66;
+          left:${left}px;top:${top}px;width:${vw}px;height:${vh}px;
+          border:2px solid ${c};border-radius:3px;
+          box-shadow:0 0 6px ${c}aa,inset 0 0 4px ${c}66;
           box-sizing:border-box;
           animation:eos-mark-pulse 1.8s ease-in-out infinite`;
       if (!alreadyMark) {
@@ -2204,7 +2310,7 @@ function placeShields() {
       } else {
         alreadyMark.style.cssText = markCss;
       }
-    } else if (!isMarked && alreadyMark) {
+    } else if (alreadyMark) {
       alreadyMark.remove();
     }
 
