@@ -2185,23 +2185,24 @@ function placeShields() {
     // ── Moldura de aldeia marcada manualmente ──
     const isMarked = markedVillages.has(coordKey);
     if (isMarked) {
-      const markLeft = left - 2;
-      const markTop  = top - 2;
+      // Dimensões reais do sprite da aldeia (evita ultrapassar a aldeia vizinha)
+      const vw = domVillage.offsetWidth || 53;
+      const vh = domVillage.offsetHeight || 28;
+      const markLeft = left;
+      const markTop  = top;
+      const markCss = `position:absolute;pointer-events:none;z-index:19;
+          left:${markLeft}px;top:${markTop}px;width:${vw}px;height:${vh}px;
+          border:2px solid ${colorMark};border-radius:3px;
+          box-shadow:0 0 6px ${colorMark}aa,inset 0 0 4px ${colorMark}66;
+          box-sizing:border-box;
+          animation:eos-mark-pulse 1.8s ease-in-out infinite`;
       if (!alreadyMark) {
         const mark = document.createElement('div');
         mark.dataset.eosMark = coordKey;
-        mark.style.cssText = `position:absolute;pointer-events:none;z-index:19;
-          left:${markLeft}px;top:${markTop}px;width:57px;height:39px;
-          border:2px solid ${colorMark};border-radius:3px;
-          box-shadow:0 0 8px ${colorMark}b3,inset 0 0 6px ${colorMark}66;
-          animation:eos-mark-pulse 1.8s ease-in-out infinite`;
+        mark.style.cssText = markCss;
         parent.insertBefore(mark, domVillage);
       } else {
-        // Atualiza posição (pan do mapa move a aldeia mas não a moldura)
-        alreadyMark.style.left = `${markLeft}px`;
-        alreadyMark.style.top  = `${markTop}px`;
-        alreadyMark.style.borderColor = colorMark;
-        alreadyMark.style.boxShadow = `0 0 8px ${colorMark}b3,inset 0 0 6px ${colorMark}66`;
+        alreadyMark.style.cssText = markCss;
       }
     } else if (!isMarked && alreadyMark) {
       alreadyMark.remove();
