@@ -1654,12 +1654,17 @@ function renderMarkButtons() {
     mb.title = m.name + ' (clica para ativar)';
     const isActive = activeMarkId === m.id;
     mb.style.cssText = `position:absolute;top:5px;right:${offset}px;width:30px;height:30px;z-index:99999;cursor:pointer;
-      background:${isActive ? `linear-gradient(135deg,${m.color},${m.color}aa)` : 'linear-gradient(135deg,#5a4430,#3a2818)'};
+      background:${isActive ? `linear-gradient(135deg,${m.color}aa,${m.color}55)` : 'linear-gradient(135deg,#5a4430,#3a2818)'};
       border:1.5px solid ${isActive ? m.color : '#c0a060'};border-radius:6px;
-      display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;font-weight:700;
+      display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;
       box-shadow:${isActive ? `0 0 12px ${m.color}80, 0 2px 8px rgba(0,0,0,0.5)` : '0 2px 8px rgba(0,0,0,0.5)'};
       transition:all .2s`;
-    mb.innerHTML = `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${m.color};border:1.5px solid rgba(255,255,255,.7)"></span>`;
+    mb.innerHTML = `
+      <span style="position:relative;display:inline-block;line-height:1">
+        🎯
+        <span style="position:absolute;top:-3px;right:-4px;width:10px;height:10px;border-radius:50%;
+          background:${m.color};border:1.5px solid #14100a;box-shadow:0 0 4px ${m.color}aa"></span>
+      </span>`;
     mb.addEventListener('click', () => setActiveMark(m.id));
     mapEl.appendChild(mb);
     offset += 37;
