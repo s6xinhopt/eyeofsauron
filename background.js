@@ -506,8 +506,57 @@ chrome.runtime.onMessage.addListener((message, sender) => {
         func: readAvailableTroopsMain,
       }).catch(e => console.warn('[EOS bg] READ_AVAILABLE_MAIN falhou:', e));
     }
+  } else if (message.type === 'INSTALL_MAP_CLICK_HOOK') {
+    if (sender.tab?.id) {
+      chrome.scripting.executeScript({
+        target: { tabId: sender.tab.id },
+        world: 'MAIN',
+        func: installMapClickHookMain,
+      }).catch(e => console.warn('[EOS bg] INSTALL_MAP_CLICK_HOOK falhou:', e));
+    }
   }
 });
+
+// Instala wrapper em TWMap.map._handleClick. Quando o utilizador clica numa
+// aldeia, postamos o coord via window.postMessage para o content script.
+function installMapClickHookMain() {
+  if (window.__eosMapClickHookInstalled) return;
+  const tryInstall = () => {
+    if (!window.TWMap || !TWMap.map || typeof TWMap.map._handleClick !== 'function') {
+      setTimeout(tryInstall, 500);
+      return;
+    }
+    const original = TWMap.map._handleClick.bind(TWMap.map);
+    TWMap.map._handleClick = function (e) {
+      // Só interfere quando modo de marcação está ativo — content.js avisa via flag global
+      if (window.__eosMarkSelectionActive) {
+        try {
+          const pos = this.coordByEvent(e);
+          if (pos) {
+            const village = TWMap.villages[pos[0] * 1000 + pos[1]];
+            if (village) {
+              const coord = pos[0] + '|' + pos[1];
+              window.postMessage({ type: 'EOS_MAP_VILLAGE_CLICK', coord, vid: village.id }, '*');
+              return false;  // bloqueia ação padrão do TW (abrir menu)
+            }
+          }
+        } catch (_) {}
+      }
+      return original.call(this, e);
+    };
+    window.__eosMapClickHookInstalled = true;
+    console.log('[EOS map] click hook instalado');
+  };
+  tryInstall();
+
+  // Permite ao content script ligar/desligar o modo sem reinjetar
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || !e.data) return;
+    if (e.data.type === 'EOS_SET_MARK_MODE') {
+      window.__eosMarkSelectionActive = !!e.data.active;
+    }
+  });
+}
 
 // Lê tropas disponíveis por aldeia na page place&mode=call via jQuery (MAIN world)
 // Posta resultado para o content script via window.postMessage

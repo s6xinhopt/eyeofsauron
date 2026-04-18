@@ -1631,6 +1631,8 @@ function injectMapSettingsButton() {
 
 function toggleMarkSelectionMode(btn) {
   markSelectionMode = !markSelectionMode;
+  // Avisa MAIN world para intercetar/libertar cliques no mapa
+  try { window.postMessage({ type: 'EOS_SET_MARK_MODE', active: markSelectionMode }, '*'); } catch (_) {}
   if (btn) {
     btn.style.background = markSelectionMode
       ? `linear-gradient(135deg,${colorMark},${colorMark}aa)`
@@ -1661,32 +1663,20 @@ function toggleMarkVillage(coordKey) {
   placeShields();
 }
 
-// Interceta clique em aldeias SÓ quando modo de marcação está ativo
+// Interceta cliques no mapa via TWMap.map._handleClick (MAIN world).
+// TW captura cliques ao nível do canvas — listeners DOM não chegam lá.
 function setupMarkClickHandler() {
-  document.addEventListener('click', (e) => {
+  // Listener: recebe postMessage do MAIN world com o coord clicado
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || !e.data || e.data.type !== 'EOS_MAP_VILLAGE_CLICK') return;
     if (!markSelectionMode) return;
-    const village = e.target.closest?.('[id^="map_village_"]');
-    if (!village) return;
-    const vidMatch = village.id.match(/map_village_(\d+)/);
-    if (!vidMatch) return;
-    const vid = vidMatch[1];
-    // vid → coord
-    const mapEl = document.getElementById('map');
-    const vmStr = mapEl?.getAttribute('data-eos-villages');
-    if (vmStr) {
-      try {
-        const ids = JSON.parse(vmStr);
-        for (const [coord, v] of Object.entries(ids)) {
-          if (String(v) === vid) {
-            e.stopPropagation();
-            e.preventDefault();
-            toggleMarkVillage(coord);
-            return;
-          }
-        }
-      } catch (_) {}
-    }
-  }, true);  // capture para intercetar antes do TW
+    const coord = e.data.coord;
+    if (!coord) return;
+    toggleMarkVillage(coord);
+  });
+
+  // Injeta o wrapper do _handleClick no MAIN world (uma vez) via background.js
+  chrome.runtime.sendMessage({ type: 'INSTALL_MAP_CLICK_HOOK' });
 }
 
 function toggleMapSettingsPanel() {
