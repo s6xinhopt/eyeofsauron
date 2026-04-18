@@ -1367,6 +1367,9 @@ let mapAnimation   = 'float';  // 'none'|'float'|'pulse'|'shake'|'glow'|'spin'|'
 let colorSkull     = '#2a1010';
 let colorAxe       = '#c02020';
 let colorSword     = '#20305a';
+let colorMark      = '#e04040';  // cor da moldura de aldeias marcadas manualmente
+let markSelectionMode = false;    // quando true, clique em aldeia marca/desmarca
+let markedVillages    = new Set(); // coords "XXX|YYY" marcadas
 let streamerMode   = false;
 const STREAMER_SHIELD_COLOR = '#5a5a5a';  // cinza neutro para ocultar tier
 
@@ -1481,6 +1484,7 @@ function injectShieldStyles() {
     @keyframes eos-glow    { 0%,100% { filter: brightness(1) drop-shadow(0 0 2px rgba(255,200,120,.4)); } 50% { filter: brightness(1.35) drop-shadow(0 0 6px rgba(255,180,80,.9)); } }
     @keyframes eos-spin    { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
     @keyframes eos-breathe { 0%,100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.08); opacity: 1; } }
+    @keyframes eos-mark-pulse { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
 
     .eos-anim-float   { animation: eos-float   2s ease-in-out infinite; }
     .eos-anim-pulse   { animation: eos-pulse   1.6s ease-in-out infinite; }
@@ -1517,12 +1521,12 @@ async function initMapOverlay() {
           eosShowAllyBunks, eosShowEnemyBunks, eosBunksAnimated,
           eosShowSkull, eosShowAxe, eosShowSword, eosIconSize, eosSkullDays,
           eosMapAnimation, eosColorSkull, eosColorAxe, eosColorSword,
-          eosStreamerMode } = await getStorage(
+          eosStreamerMode, eosColorMark } = await getStorage(
     'eosBunkTypes', 'eosEnemyBunkTypes', 'eosMapEnabled',
     'eosShowAllyBunks', 'eosShowEnemyBunks', 'eosBunksAnimated',
     'eosShowSkull', 'eosShowAxe', 'eosShowSword', 'eosIconSize', 'eosSkullDays',
     'eosMapAnimation', 'eosColorSkull', 'eosColorAxe', 'eosColorSword',
-    'eosStreamerMode');
+    'eosStreamerMode', 'eosColorMark');
   if (savedEnabled === false) eosMapEnabled = false;
   if (Array.isArray(eosBunkTypes) && eosBunkTypes.length > 0) bunkTypes = eosBunkTypes;
   if (Array.isArray(eosEnemyBunkTypes) && eosEnemyBunkTypes.length > 0) enemyBunkTypes = eosEnemyBunkTypes;
@@ -1539,9 +1543,17 @@ async function initMapOverlay() {
   if (typeof eosColorAxe   === 'string') colorAxe   = eosColorAxe;
   if (typeof eosColorSword === 'string') colorSword = eosColorSword;
   if (eosStreamerMode === true) streamerMode = true;
+  if (typeof eosColorMark === 'string') colorMark = eosColorMark;
+  // Carrega lista de aldeias marcadas (per-world)
+  try {
+    const markKey = `eosMarkedVillages.${CURRENT_WORLD || 'default'}`;
+    const mStore = await getStorage(markKey);
+    if (Array.isArray(mStore[markKey])) markedVillages = new Set(mStore[markKey]);
+  } catch (_) {}
 
   // Observa o popup nativo do TW para injetar dados de tropas
   setupPopupObserver();
+  setupMarkClickHandler();
 
   // Injeta botão de settings do mapa
   injectMapSettingsButton();
@@ -1600,7 +1612,81 @@ function injectMapSettingsButton() {
     btn.addEventListener('click', toggleMapSettingsPanel);
     mapEl.style.position = 'relative';
     mapEl.appendChild(btn);
+
+    // Botão de marcação de aldeias (🎯) — ao lado do settings
+    const markBtn = document.createElement('div');
+    markBtn.id = 'eos-map-mark-btn';
+    markBtn.title = 'Marcar aldeias (clica para ativar)';
+    markBtn.style.cssText = `position:absolute;top:5px;right:42px;width:30px;height:30px;z-index:99999;cursor:pointer;
+      background:linear-gradient(135deg,#5a4430,#3a2818);border:1.5px solid #c0a060;border-radius:6px;
+      display:flex;align-items:center;justify-content:center;font-size:16px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.5);transition:all .2s`;
+    markBtn.textContent = '🎯';
+    markBtn.addEventListener('mouseenter', () => { if (!markSelectionMode) markBtn.style.borderColor = '#e87830'; });
+    markBtn.addEventListener('mouseleave', () => { if (!markSelectionMode) markBtn.style.borderColor = '#c0a060'; });
+    markBtn.addEventListener('click', () => toggleMarkSelectionMode(markBtn));
+    mapEl.appendChild(markBtn);
   }, 500);
+}
+
+function toggleMarkSelectionMode(btn) {
+  markSelectionMode = !markSelectionMode;
+  if (btn) {
+    btn.style.background = markSelectionMode
+      ? `linear-gradient(135deg,${colorMark},${colorMark}aa)`
+      : 'linear-gradient(135deg,#5a4430,#3a2818)';
+    btn.style.borderColor = markSelectionMode ? colorMark : '#c0a060';
+    btn.style.boxShadow = markSelectionMode
+      ? `0 0 12px ${colorMark}80, 0 2px 8px rgba(0,0,0,0.5)`
+      : '0 2px 8px rgba(0,0,0,0.5)';
+    btn.title = markSelectionMode
+      ? 'Modo marcação ATIVO — clica numa aldeia para marcar'
+      : 'Marcar aldeias (clica para ativar)';
+  }
+}
+
+async function saveMarkedVillages() {
+  try {
+    const key = `eosMarkedVillages.${CURRENT_WORLD || 'default'}`;
+    await chrome.storage.local.set({ [key]: Array.from(markedVillages) });
+  } catch (_) {}
+}
+
+function toggleMarkVillage(coordKey) {
+  if (markedVillages.has(coordKey)) markedVillages.delete(coordKey);
+  else markedVillages.add(coordKey);
+  saveMarkedVillages();
+  // Re-renderiza para mostrar/esconder moldura
+  document.querySelectorAll(`[data-eos-mark="${coordKey}"]`).forEach(el => el.remove());
+  placeShields();
+}
+
+// Interceta clique em aldeias SÓ quando modo de marcação está ativo
+function setupMarkClickHandler() {
+  document.addEventListener('click', (e) => {
+    if (!markSelectionMode) return;
+    const village = e.target.closest?.('[id^="map_village_"]');
+    if (!village) return;
+    const vidMatch = village.id.match(/map_village_(\d+)/);
+    if (!vidMatch) return;
+    const vid = vidMatch[1];
+    // vid → coord
+    const mapEl = document.getElementById('map');
+    const vmStr = mapEl?.getAttribute('data-eos-villages');
+    if (vmStr) {
+      try {
+        const ids = JSON.parse(vmStr);
+        for (const [coord, v] of Object.entries(ids)) {
+          if (String(v) === vid) {
+            e.stopPropagation();
+            e.preventDefault();
+            toggleMarkVillage(coord);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+  }, true);  // capture para intercetar antes do TW
 }
 
 function toggleMapSettingsPanel() {
@@ -1784,7 +1870,7 @@ function buildSettingsPanelHTML() {
               style="width:100%;accent-color:#e87830">
           </div>
 
-          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px;padding:10px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr;gap:6px;padding:10px;background:#14100a;border-radius:6px;border:1px solid #2a2018">
             <div>
               <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">Animação</div>
               <select id="eos-anim-type" style="width:100%;padding:5px;background:#0e0c08;color:#f0e0c8;border:1px solid #3a2a1a;border-radius:4px;font-size:10px;cursor:pointer">
@@ -1808,6 +1894,10 @@ function buildSettingsPanelHTML() {
             <div>
               <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">Sword</div>
               <input id="eos-color-sword" type="color" value="${colorSword}" style="width:100%;height:26px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
+            </div>
+            <div>
+              <div style="font-size:9px;color:#c0a878;text-transform:uppercase;letter-spacing:1;font-weight:700;margin-bottom:3px">🎯 Marca</div>
+              <input id="eos-color-mark" type="color" value="${colorMark}" style="width:100%;height:26px;border:1px solid #3a2a1a;border-radius:4px;background:transparent;cursor:pointer">
             </div>
           </div>
         </div>
@@ -1932,6 +2022,18 @@ function attachSettingsEvents(panel) {
   bindColorPicker('eos-color-skull', v => colorSkull = v, 'eos-toggle-skull');
   bindColorPicker('eos-color-axe',   v => colorAxe   = v, 'eos-toggle-axe');
   bindColorPicker('eos-color-sword', v => colorSword = v, 'eos-toggle-sword');
+  // Color picker da marca — sem toggle associado, só faz re-render
+  panel.querySelector('#eos-color-mark')?.addEventListener('input', (e) => {
+    colorMark = e.target.value;
+    liveRerender();
+    // Atualiza cor do botão 🎯 se estiver ativo
+    const mb = document.getElementById('eos-map-mark-btn');
+    if (mb && markSelectionMode) {
+      mb.style.background = `linear-gradient(135deg,${colorMark},${colorMark}aa)`;
+      mb.style.borderColor = colorMark;
+      mb.style.boxShadow = `0 0 12px ${colorMark}80, 0 2px 8px rgba(0,0,0,0.5)`;
+    }
+  });
 
   // Campos dos bunk cards (ally e enemy)
   panel.querySelectorAll('[data-section]').forEach(input => {
@@ -1966,6 +2068,7 @@ function attachSettingsEvents(panel) {
       eosColorSkull:   colorSkull,
       eosColorAxe:     colorAxe,
       eosColorSword:   colorSword,
+      eosColorMark:    colorMark,
     });
     // Re-render: remove escudos e inimigos antigos e recria com novas definições
     document.querySelectorAll('[data-eos-shield],[data-eos-enemy]').forEach(el => el.remove());
@@ -2084,10 +2187,27 @@ function placeShields() {
     const alreadyShield      = parent.querySelector(`[data-eos-shield="${coordKey}"]`);
     const alreadyEnemyShield = parent.querySelector(`[data-eos-enemy-shield="${coordKey}"]`);
     const alreadyEnemy       = parent.querySelector(`[data-eos-enemy="${coordKey}"]`);
-    if (alreadyShield && alreadyEnemyShield && alreadyEnemy) continue;
+    const alreadyMark        = parent.querySelector(`[data-eos-mark="${coordKey}"]`);
 
     const top = parseInt(domVillage.style.top, 10) || 0;
     const left = parseInt(domVillage.style.left, 10) || 0;
+
+    // ── Moldura de aldeia marcada manualmente ──
+    const isMarked = markedVillages.has(coordKey);
+    if (isMarked && !alreadyMark) {
+      const mark = document.createElement('div');
+      mark.dataset.eosMark = coordKey;
+      mark.style.cssText = `position:absolute;pointer-events:none;z-index:19;
+        left:${left - 2}px;top:${top - 2}px;width:57px;height:39px;
+        border:2px solid ${colorMark};border-radius:3px;
+        box-shadow:0 0 8px ${colorMark}b3,inset 0 0 6px ${colorMark}66;
+        animation:eos-mark-pulse 1.8s ease-in-out infinite`;
+      parent.insertBefore(mark, domVillage);
+    } else if (!isMarked && alreadyMark) {
+      alreadyMark.remove();
+    }
+
+    if (alreadyShield && alreadyEnemyShield && alreadyEnemy) continue;
 
     // ── Escudo de tribo (aldeia aliada com tropas classificadas como bunk) ──
     if (!alreadyShield && hasTribe && showAllyBunks) {
