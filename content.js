@@ -2184,15 +2184,25 @@ function placeShields() {
 
     // ── Moldura de aldeia marcada manualmente ──
     const isMarked = markedVillages.has(coordKey);
-    if (isMarked && !alreadyMark) {
-      const mark = document.createElement('div');
-      mark.dataset.eosMark = coordKey;
-      mark.style.cssText = `position:absolute;pointer-events:none;z-index:19;
-        left:${left - 2}px;top:${top - 2}px;width:57px;height:39px;
-        border:2px solid ${colorMark};border-radius:3px;
-        box-shadow:0 0 8px ${colorMark}b3,inset 0 0 6px ${colorMark}66;
-        animation:eos-mark-pulse 1.8s ease-in-out infinite`;
-      parent.insertBefore(mark, domVillage);
+    if (isMarked) {
+      const markLeft = left - 2;
+      const markTop  = top - 2;
+      if (!alreadyMark) {
+        const mark = document.createElement('div');
+        mark.dataset.eosMark = coordKey;
+        mark.style.cssText = `position:absolute;pointer-events:none;z-index:19;
+          left:${markLeft}px;top:${markTop}px;width:57px;height:39px;
+          border:2px solid ${colorMark};border-radius:3px;
+          box-shadow:0 0 8px ${colorMark}b3,inset 0 0 6px ${colorMark}66;
+          animation:eos-mark-pulse 1.8s ease-in-out infinite`;
+        parent.insertBefore(mark, domVillage);
+      } else {
+        // Atualiza posição (pan do mapa move a aldeia mas não a moldura)
+        alreadyMark.style.left = `${markLeft}px`;
+        alreadyMark.style.top  = `${markTop}px`;
+        alreadyMark.style.borderColor = colorMark;
+        alreadyMark.style.boxShadow = `0 0 8px ${colorMark}b3,inset 0 0 6px ${colorMark}66`;
+      }
     } else if (!isMarked && alreadyMark) {
       alreadyMark.remove();
     }
